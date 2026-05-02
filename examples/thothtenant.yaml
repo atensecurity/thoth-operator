@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: thoth-admin-token
+  namespace: thoth-system
+type: Opaque
+stringData:
+  token: "REPLACE_WITH_THOTH_ADMIN_BEARER_TOKEN"
+---
+apiVersion: platform.atensecurity.com/v1alpha1
+kind: ThothTenant
+metadata:
+  name: demo-tenant
+  namespace: thoth-system
+spec:
+  tenantId: demo-tenant
+  apexDomain: atensecurity.com
+  authSecretRef:
+    name: thoth-admin-token
+    key: token
+  settings:
+    enforceMcpPolicies: true
+    approvalMode: "step_up"
+  mdmProvider:
+    provider: kandji
+    endpointUrl: "https://tenant.api.kandji.io"
+    enabled: true
+  policySync: true

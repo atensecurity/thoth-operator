@@ -1,0 +1,15 @@
+apiVersion: platform.atensecurity.com/v1alpha1
+kind: ThothTenant
+metadata:
+  name: sample
+  namespace: thoth-system
+spec:
+  tenantId: acme-security
+  apexDomain: atensecurity.com
+  authSecretRef:
+    name: thoth-admin-token
+    key: token
+  settings:
+    decisionWebhookEnabled: true
+    decisionWebhookUrl: "https://hooks.example.com/thoth"
+  policySync: true

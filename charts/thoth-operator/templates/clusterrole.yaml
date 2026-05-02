@@ -1,0 +1,19 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "thoth-operator.fullname" . }}
+rules:
+  - apiGroups: ["platform.atensecurity.com"]
+    resources: ["thothtenants"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["platform.atensecurity.com"]
+    resources: ["thothtenants/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["platform.atensecurity.com"]
+    resources: ["thothtenants/finalizers"]
+    verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["secrets", "events"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+{{- end }}

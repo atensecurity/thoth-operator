@@ -1,0 +1,130 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: thothtenants.platform.atensecurity.com
+spec:
+  group: platform.atensecurity.com
+  names:
+    kind: ThothTenant
+    listKind: ThothTenantList
+    plural: thothtenants
+    singular: thothtenant
+    shortNames:
+      - thotht
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - name: Tenant
+          type: string
+          jsonPath: .spec.tenantId
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - tenantId
+                - authSecretRef
+              properties:
+                tenantId:
+                  type: string
+                  minLength: 1
+                apexDomain:
+                  type: string
+                apiBaseURL:
+                  type: string
+                  format: uri
+                authSecretRef:
+                  type: object
+                  required:
+                    - name
+                    - key
+                  properties:
+                    name:
+                      type: string
+                    key:
+                      type: string
+                settings:
+                  type: object
+                  additionalProperties:
+                    x-kubernetes-preserve-unknown-fields: true
+                mdmProvider:
+                  type: object
+                  required:
+                    - provider
+                  properties:
+                    provider:
+                      type: string
+                      minLength: 1
+                    endpointUrl:
+                      type: string
+                    enabled:
+                      type: boolean
+                    apiTokenSecretRef:
+                      type: object
+                      required:
+                        - name
+                        - key
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                policySync:
+                  type: boolean
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                observedGeneration:
+                  type: integer
+                  format: int64
+                endpointUrl:
+                  type: string
+                lastPolicySyncAt:
+                  type: string
+                  format: date-time
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                      - reason
+                      - message
+                      - lastTransitionTime
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+      subresources:
+        status: {}

@@ -1,0 +1,15 @@
+apiVersion: v2
+name: thoth-operator
+description: Kubernetes operator for managing Thoth control-plane resources
+home: https://atensecurity.com
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - thoth
+  - operator
+  - governance
+  - ai-security
+maintainers:
+  - name: Aten Security
+    url: https://atensecurity.com
