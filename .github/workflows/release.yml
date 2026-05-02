@@ -1,0 +1,304 @@
+name: Release thoth-operator
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-rc*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (for example 0.1.0, 0.1.0-rc1, v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_REPOSITORY_DEFAULT: ghcr.io/${{ github.repository_owner }}/thoth-operator
+      CHART_OCI_DEFAULT: oci://ghcr.io/${{ github.repository_owner }}/charts/thoth-operator
+      DOCS_URL_DEFAULT: https://docs.atensecurity.com/docs/kubernetes-operator/
+      IMAGE_REPOSITORY_FROM_VAR: ${{ vars.OPERATOR_IMAGE_REPOSITORY }}
+      CHART_OCI_FROM_VAR: ${{ vars.OPERATOR_CHART_OCI }}
+      DOCS_URL_FROM_VAR: ${{ vars.OPERATOR_DOCS_URL }}
+    steps:
+      - name: Checkout git history
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Resolve and validate release tag
+        id: release_tag
+        shell: bash
+        env:
+          RAW_TAG_INPUT: ${{ github.event.inputs.release_tag }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            RAW_TAG="${RAW_TAG_INPUT}"
+          else
+            RAW_TAG="${GITHUB_REF_NAME}"
+          fi
+
+          RAW_TAG="$(echo "${RAW_TAG}" | xargs)"
+          if [[ -z "${RAW_TAG}" ]]; then
+            echo "release_tag is required and cannot be empty." >&2
+            exit 1
+          fi
+
+          if [[ "${RAW_TAG}" == v* ]]; then
+            CURRENT_TAG="${RAW_TAG}"
+          else
+            CURRENT_TAG="v${RAW_TAG}"
+          fi
+
+          if [[ ! "${CURRENT_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+            echo "Invalid release tag '${RAW_TAG}' (normalized: '${CURRENT_TAG}')." >&2
+            echo "Expected semantic version like 0.1.0 or 0.1.0-rc1." >&2
+            exit 1
+          fi
+
+          RELEASE_VERSION="${CURRENT_TAG#v}"
+          IS_PRERELEASE=false
+          if [[ "${RELEASE_VERSION}" == *"-rc"* ]]; then
+            IS_PRERELEASE=true
+          fi
+
+          echo "current_tag=${CURRENT_TAG}" >> "$GITHUB_OUTPUT"
+          echo "release_version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${IS_PRERELEASE}" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch tags
+        run: git fetch --force --tags
+
+      - name: Ensure tag exists and checkout tag commit
+        shell: bash
+        env:
+          CURRENT_TAG: ${{ steps.release_tag.outputs.current_tag }}
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify "refs/tags/${CURRENT_TAG}" >/dev/null 2>&1; then
+            echo "Tag '${CURRENT_TAG}' does not exist in this repository." >&2
+            exit 1
+          fi
+          git checkout --force "refs/tags/${CURRENT_TAG}"
+
+      - name: Install release tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          go install github.com/sigstore/cosign/v2/cmd/cosign@v2.4.1
+          go install github.com/google/go-containerregistry/cmd/crane@v0.20.3
+          echo "${HOME}/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Configure container tooling and registry auth
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          echo "${GITHUB_TOKEN}" | helm registry login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          docker run --privileged --rm tonistiigi/binfmt --install all
+          docker buildx create --name thoth-operator-builder --driver docker-container --use
+          docker buildx inspect --bootstrap
+
+      - name: Build and push operator image
+        id: image
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release_tag.outputs.release_version }}
+          IS_PRERELEASE: ${{ steps.release_tag.outputs.is_prerelease }}
+        run: |
+          set -euo pipefail
+          IMAGE_REPOSITORY="${IMAGE_REPOSITORY_FROM_VAR:-${IMAGE_REPOSITORY_DEFAULT}}"
+
+          TAG_ARGS=("-t" "${IMAGE_REPOSITORY}:${RELEASE_VERSION}")
+          if [[ "${IS_PRERELEASE}" != "true" ]]; then
+            TAG_ARGS+=("-t" "${IMAGE_REPOSITORY}:latest")
+          fi
+
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            "${TAG_ARGS[@]}" \
+            --push \
+            .
+
+          IMAGE_DIGEST="$(crane digest "${IMAGE_REPOSITORY}:${RELEASE_VERSION}")"
+          echo "image_repository=${IMAGE_REPOSITORY}" >> "$GITHUB_OUTPUT"
+          echo "image_digest=${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Package and push Helm chart
+        id: chart
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release_tag.outputs.release_version }}
+        run: |
+          set -euo pipefail
+          CHART_OCI="${CHART_OCI_FROM_VAR:-${CHART_OCI_DEFAULT}}"
+          ARTIFACT_DIR="${RUNNER_TEMP}/thoth-operator-release"
+          mkdir -p "${ARTIFACT_DIR}"
+
+          cp -R charts/thoth-operator "${ARTIFACT_DIR}/chart"
+          sed -i "s/^version:.*/version: ${RELEASE_VERSION}/" "${ARTIFACT_DIR}/chart/Chart.yaml"
+          sed -i "s/^appVersion:.*/appVersion: \"${RELEASE_VERSION}\"/" "${ARTIFACT_DIR}/chart/Chart.yaml"
+          sed -i "s/^  tag:.*/  tag: \"${RELEASE_VERSION}\"/" "${ARTIFACT_DIR}/chart/values.yaml"
+
+          helm package "${ARTIFACT_DIR}/chart" --destination "${ARTIFACT_DIR}"
+          CHART_ARCHIVE="${ARTIFACT_DIR}/thoth-operator-${RELEASE_VERSION}.tgz"
+          helm push "${CHART_ARCHIVE}" "${CHART_OCI}"
+
+          CHART_REF="${CHART_OCI#oci://}"
+          CHART_DIGEST="$(crane digest "${CHART_REF}:${RELEASE_VERSION}")"
+          sha256sum "${CHART_ARCHIVE}" > "${ARTIFACT_DIR}/thoth-operator-${RELEASE_VERSION}.sha256"
+
+          echo "chart_oci=${CHART_OCI}" >> "$GITHUB_OUTPUT"
+          echo "chart_ref=${CHART_REF}" >> "$GITHUB_OUTPUT"
+          echo "chart_digest=${CHART_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "chart_archive=${CHART_ARCHIVE}" >> "$GITHUB_OUTPUT"
+          echo "chart_checksum=${ARTIFACT_DIR}/thoth-operator-${RELEASE_VERSION}.sha256" >> "$GITHUB_OUTPUT"
+          echo "artifact_dir=${ARTIFACT_DIR}" >> "$GITHUB_OUTPUT"
+
+      - name: Sign and verify image + chart (shared key)
+        id: sign
+        shell: bash
+        env:
+          THOTH_TF_PROVIDER_GPG_PRIVATE_KEY: ${{ secrets.THOTH_TF_PROVIDER_GPG_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.THOTH_TF_PROVIDER_GPG_PASSPHRASE }}
+          IMAGE_REPOSITORY: ${{ steps.image.outputs.image_repository }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.image_digest }}
+          CHART_REF: ${{ steps.chart.outputs.chart_ref }}
+          CHART_DIGEST: ${{ steps.chart.outputs.chart_digest }}
+          ARTIFACT_DIR: ${{ steps.chart.outputs.artifact_dir }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${THOTH_TF_PROVIDER_GPG_PRIVATE_KEY:-}" ]]; then
+            echo "::error::Missing THOTH_TF_PROVIDER_GPG_PRIVATE_KEY secret. This workflow expects the shared signing key."
+            exit 1
+          fi
+
+          mkdir -p "${ARTIFACT_DIR}"
+          KEY_FILE="${ARTIFACT_DIR}/cosign.key"
+          PUB_FILE="${ARTIFACT_DIR}/cosign.pub"
+          LOG_FILE="${ARTIFACT_DIR}/cosign.key.err"
+          IMPORTED=0
+
+          printf '%s' "${THOTH_TF_PROVIDER_GPG_PRIVATE_KEY}" > "${KEY_FILE}"
+          if cosign public-key --key "${KEY_FILE}" > "${PUB_FILE}" 2>"${LOG_FILE}"; then IMPORTED=1; fi
+
+          if [[ "${IMPORTED}" -eq 0 ]]; then
+            printf '%b' "${THOTH_TF_PROVIDER_GPG_PRIVATE_KEY}" > "${KEY_FILE}"
+            if cosign public-key --key "${KEY_FILE}" > "${PUB_FILE}" 2>"${LOG_FILE}"; then IMPORTED=1; fi
+          fi
+
+          if [[ "${IMPORTED}" -eq 0 ]]; then
+            if printf '%s' "${THOTH_TF_PROVIDER_GPG_PRIVATE_KEY}" | base64 --decode > "${KEY_FILE}" 2>/dev/null \
+              && [[ -s "${KEY_FILE}" ]] \
+              && cosign public-key --key "${KEY_FILE}" > "${PUB_FILE}" 2>"${LOG_FILE}"; then
+              IMPORTED=1
+            fi
+          fi
+
+          if [[ "${IMPORTED}" -eq 0 ]]; then
+            echo "::error::THOTH_TF_PROVIDER_GPG_PRIVATE_KEY is not valid for cosign signing."
+            if [[ -s "${LOG_FILE}" ]]; then
+              echo "::error::cosign parse error: $(tail -n 1 "${LOG_FILE}")"
+            fi
+            exit 1
+          fi
+
+          IMAGE_REF="${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"
+          CHART_REF_DIGEST="${CHART_REF}@${CHART_DIGEST}"
+
+          cosign sign --yes --key "${KEY_FILE}" "${IMAGE_REF}"
+          cosign sign --yes --key "${KEY_FILE}" "${CHART_REF_DIGEST}"
+
+          cosign verify --key "${PUB_FILE}" "${IMAGE_REF}" >/dev/null
+          cosign verify --key "${PUB_FILE}" "${CHART_REF_DIGEST}" >/dev/null
+
+          echo "cosign_public_key=${PUB_FILE}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_TAG: ${{ steps.release_tag.outputs.current_tag }}
+          RELEASE_VERSION: ${{ steps.release_tag.outputs.release_version }}
+          IS_PRERELEASE: ${{ steps.release_tag.outputs.is_prerelease }}
+          DOCS_URL: ${{ env.DOCS_URL_FROM_VAR }}
+          DOCS_URL_FALLBACK: ${{ env.DOCS_URL_DEFAULT }}
+          IMAGE_REPOSITORY: ${{ steps.image.outputs.image_repository }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.image_digest }}
+          CHART_REF: ${{ steps.chart.outputs.chart_ref }}
+          CHART_DIGEST: ${{ steps.chart.outputs.chart_digest }}
+          CHART_ARCHIVE: ${{ steps.chart.outputs.chart_archive }}
+          CHART_CHECKSUM: ${{ steps.chart.outputs.chart_checksum }}
+          COSIGN_PUBLIC_KEY: ${{ steps.sign.outputs.cosign_public_key }}
+        run: |
+          set -euo pipefail
+
+          DOCS_LINK="${DOCS_URL:-${DOCS_URL_FALLBACK}}"
+          NOTES_FILE="$(mktemp)"
+          cat > "${NOTES_FILE}" <<EOF
+          Release ${CURRENT_TAG}
+
+          - Operator image: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\`
+          - Helm chart (OCI): \`${CHART_REF}@${CHART_DIGEST}\`
+          - Documentation: ${DOCS_LINK}
+          EOF
+
+          if gh release view "${CURRENT_TAG}" >/dev/null 2>&1; then
+            gh release upload "${CURRENT_TAG}" "${CHART_ARCHIVE}" "${CHART_CHECKSUM}" "${COSIGN_PUBLIC_KEY}" --clobber
+          else
+            CREATE_ARGS=(
+              "${CURRENT_TAG}"
+              "${CHART_ARCHIVE}"
+              "${CHART_CHECKSUM}"
+              "${COSIGN_PUBLIC_KEY}"
+              --title "thoth-operator ${CURRENT_TAG}"
+              --notes-file "${NOTES_FILE}"
+            )
+            if [[ "${IS_PRERELEASE}" == "true" ]]; then
+              CREATE_ARGS+=(--prerelease)
+            fi
+            gh release create "${CREATE_ARGS[@]}"
+          fi
+
+      - name: Write release summary
+        shell: bash
+        env:
+          CURRENT_TAG: ${{ steps.release_tag.outputs.current_tag }}
+          IMAGE_REPOSITORY: ${{ steps.image.outputs.image_repository }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.image_digest }}
+          CHART_REF: ${{ steps.chart.outputs.chart_ref }}
+          CHART_DIGEST: ${{ steps.chart.outputs.chart_digest }}
+          DOCS_URL: ${{ env.DOCS_URL_FROM_VAR }}
+          DOCS_URL_FALLBACK: ${{ env.DOCS_URL_DEFAULT }}
+        run: |
+          {
+            echo "## thoth-operator release ${CURRENT_TAG}"
+            echo "- Image: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\`"
+            echo "- Helm chart: \`${CHART_REF}@${CHART_DIGEST}\`"
+            echo "- Docs: ${DOCS_URL:-${DOCS_URL_FALLBACK}}"
+          } >> "$GITHUB_STEP_SUMMARY"

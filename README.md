@@ -2,6 +2,11 @@
 
 Kubernetes operator for managing Aten Security Thoth control-plane configuration from inside customer clusters.
 
+## Documentation
+
+- Aten Security docs: https://docs.atensecurity.com/docs/kubernetes-operator/
+- Public runbook: https://github.com/atensecurity/thoth-runbooks/blob/main/onboarding/kubernetes-operator.md
+
 This operator reconciles a `ThothTenant` custom resource and applies desired state to the Thoth headless governance control plane:
 
 - Tenant settings (`/{tenant}/thoth/settings`)
@@ -63,6 +68,15 @@ kubectl apply -f examples/thothtenant.yaml
 - Use GitOps for `ThothTenant` resources and token secret rotation.
 - Pin the operator image tag and promote tags through staging before production.
 - Monitor `Ready` condition and operator logs for reconciliation failures.
+
+## Release Automation
+
+- Public release workflow: `.github/workflows/release.yml`
+- Trigger: signed tag push (`vX.Y.Z` or `vX.Y.Z-rcN`) in `atensecurity/thoth-operator`
+- Outputs:
+  - Multi-arch image: `ghcr.io/atensecurity/thoth-operator:<version>`
+  - OCI Helm chart: `oci://ghcr.io/atensecurity/charts/thoth-operator:<version>`
+  - Cosign signatures for both image and chart digest
 
 ## License
 
