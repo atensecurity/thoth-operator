@@ -121,6 +121,10 @@ func (c *Client) BackfillGovernanceEvidence(ctx context.Context, payload map[str
 	return c.doJSON(ctx, http.MethodPost, c.governancePath("evidence/thoth/backfill"), payload, nil, false)
 }
 
+func (c *Client) BackfillGovernanceDecisionFields(ctx context.Context, payload map[string]any) (map[string]any, error) {
+	return c.doJSON(ctx, http.MethodPost, c.tenantPath("governance/backfill-decision-fields"), payload, nil, false)
+}
+
 func (c *Client) tenantPath(path string) string {
 	trimmed := strings.TrimPrefix(strings.TrimSpace(path), "/")
 	return fmt.Sprintf("/%s/thoth/%s", c.tenantID, trimmed)

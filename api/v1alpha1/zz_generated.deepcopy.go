@@ -102,6 +102,24 @@ func (in *GovernanceEvidenceBackfillSpec) DeepCopy() *GovernanceEvidenceBackfill
 	return out
 }
 
+func (in *GovernanceDecisionFieldBackfillSpec) DeepCopyInto(out *GovernanceDecisionFieldBackfillSpec) {
+	*out = *in
+	if in.IncludeBlockedEvents != nil {
+		in, out := &in.IncludeBlockedEvents, &out.IncludeBlockedEvents
+		*out = new(bool)
+		**out = **in
+	}
+}
+
+func (in *GovernanceDecisionFieldBackfillSpec) DeepCopy() *GovernanceDecisionFieldBackfillSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(GovernanceDecisionFieldBackfillSpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
 func (in *ThothTenantSpec) DeepCopyInto(out *ThothTenantSpec) {
 	*out = *in
 	in.AuthSecretRef.DeepCopyInto(&out.AuthSecretRef)
@@ -129,6 +147,11 @@ func (in *ThothTenantSpec) DeepCopyInto(out *ThothTenantSpec) {
 		*out = new(GovernanceEvidenceBackfillSpec)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.GovernanceDecisionFieldBackfill != nil {
+		in, out := &in.GovernanceDecisionFieldBackfill, &out.GovernanceDecisionFieldBackfill
+		*out = new(GovernanceDecisionFieldBackfillSpec)
+		(*in).DeepCopyInto(*out)
+	}
 }
 
 func (in *ThothTenantSpec) DeepCopy() *ThothTenantSpec {
@@ -148,6 +171,10 @@ func (in *ThothTenantStatus) DeepCopyInto(out *ThothTenantStatus) {
 	}
 	if in.LastGovernanceEvidenceBackfillAt != nil {
 		in, out := &in.LastGovernanceEvidenceBackfillAt, &out.LastGovernanceEvidenceBackfillAt
+		*out = (*in).DeepCopy()
+	}
+	if in.LastGovernanceDecisionFieldBackfillAt != nil {
+		in, out := &in.LastGovernanceDecisionFieldBackfillAt, &out.LastGovernanceDecisionFieldBackfillAt
 		*out = (*in).DeepCopy()
 	}
 	if in.Conditions != nil {

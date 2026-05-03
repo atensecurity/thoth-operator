@@ -125,3 +125,46 @@ func TestGovernanceEvidenceBackfillPayloadRespectsOverrides(t *testing.T) {
 		t.Fatalf("integration_id = %#v, want thoth-runtime", payload["integration_id"])
 	}
 }
+
+func TestGovernanceDecisionFieldBackfillPayloadDefaults(t *testing.T) {
+	payload := governanceDecisionFieldBackfillPayload(platformv1alpha1.GovernanceDecisionFieldBackfillSpec{
+		Enabled: true,
+	})
+
+	if payload["limit"] != 500 {
+		t.Fatalf("limit = %#v, want 500", payload["limit"])
+	}
+	if payload["window_hours"] != 24*30 {
+		t.Fatalf("window_hours = %#v, want 720", payload["window_hours"])
+	}
+	if payload["include_blocked_events"] != true {
+		t.Fatalf("include_blocked_events = %#v, want true", payload["include_blocked_events"])
+	}
+	if payload["dry_run"] != false {
+		t.Fatalf("dry_run = %#v, want false", payload["dry_run"])
+	}
+}
+
+func TestGovernanceDecisionFieldBackfillPayloadRespectsOverrides(t *testing.T) {
+	includeBlockedEvents := false
+	payload := governanceDecisionFieldBackfillPayload(platformv1alpha1.GovernanceDecisionFieldBackfillSpec{
+		Enabled:              true,
+		Limit:                9999,
+		WindowHours:          24 * 365,
+		IncludeBlockedEvents: &includeBlockedEvents,
+		DryRun:               true,
+	})
+
+	if payload["limit"] != 5000 {
+		t.Fatalf("limit = %#v, want 5000", payload["limit"])
+	}
+	if payload["window_hours"] != 24*120 {
+		t.Fatalf("window_hours = %#v, want 2880", payload["window_hours"])
+	}
+	if payload["include_blocked_events"] != false {
+		t.Fatalf("include_blocked_events = %#v, want false", payload["include_blocked_events"])
+	}
+	if payload["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", payload["dry_run"])
+	}
+}

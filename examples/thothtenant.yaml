@@ -38,4 +38,10 @@ spec:
     includeBlockedEvents: true
     integrationId: thoth-runtime
     dryRun: false
+  governanceDecisionFieldBackfill:
+    enabled: true
+    limit: 500
+    windowHours: 720
+    includeBlockedEvents: true
+    dryRun: false
   policySync: true

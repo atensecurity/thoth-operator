@@ -14,6 +14,7 @@ This operator reconciles a `ThothTenant` custom resource and applies desired sta
 - Bulk compliance pack assignments (`/{tenant}/thoth/packs/apply`)
 - Optional policy sync trigger (`/{tenant}/thoth/policies/sync`)
 - Optional governance evidence backfill (`/{tenant}/governance/evidence/thoth/backfill`)
+- Optional decision-field backfill (`/{tenant}/thoth/governance/backfill-decision-fields`)
 
 ## Recommended Pattern
 
@@ -57,6 +58,7 @@ kubectl apply -f examples/thothtenant.yaml
 - `packAssignments` (optional list of bulk pack apply operations)
 - `policySync` (optional bool to trigger policy sync on generation changes)
 - `governanceEvidenceBackfill` (optional block to trigger evidence backfill on generation changes)
+- `governanceDecisionFieldBackfill` (optional block to backfill decision evidence fields)
 
 ## Security Notes
 

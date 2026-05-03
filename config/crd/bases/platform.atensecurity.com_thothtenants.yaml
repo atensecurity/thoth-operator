@@ -135,6 +135,23 @@ spec:
                       type: string
                     dryRun:
                       type: boolean
+                governanceDecisionFieldBackfill:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    limit:
+                      type: integer
+                      minimum: 1
+                      maximum: 5000
+                    windowHours:
+                      type: integer
+                      minimum: 1
+                      maximum: 2880
+                    includeBlockedEvents:
+                      type: boolean
+                    dryRun:
+                      type: boolean
                 policySync:
                   type: boolean
             status:
@@ -151,6 +168,9 @@ spec:
                   type: string
                   format: date-time
                 lastGovernanceEvidenceBackfillAt:
+                  type: string
+                  format: date-time
+                lastGovernanceDecisionFieldBackfillAt:
                   type: string
                   format: date-time
                 conditions:

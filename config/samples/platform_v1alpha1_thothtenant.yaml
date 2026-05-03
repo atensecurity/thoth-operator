@@ -18,4 +18,10 @@ spec:
         - fedramp-moderate
       environment: prod
       allAgents: true
+  governanceDecisionFieldBackfill:
+    enabled: false
+    limit: 500
+    windowHours: 720
+    includeBlockedEvents: true
+    dryRun: true
   policySync: true

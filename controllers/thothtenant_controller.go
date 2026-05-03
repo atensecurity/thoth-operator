@@ -125,6 +125,16 @@ func (r *ThothTenantReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		tenant.Status.LastGovernanceEvidenceBackfillAt = &now
 	}
 
+	if generationChanged && tenant.Spec.GovernanceDecisionFieldBackfill != nil && tenant.Spec.GovernanceDecisionFieldBackfill.Enabled {
+		payload := governanceDecisionFieldBackfillPayload(*tenant.Spec.GovernanceDecisionFieldBackfill)
+		if _, err := thothClient.BackfillGovernanceDecisionFields(ctx, payload); err != nil {
+			r.setNotReadyStatus(ctx, &tenant, "GovernanceDecisionFieldBackfillError", err.Error())
+			return ctrl.Result{RequeueAfter: 45 * time.Second}, nil
+		}
+		now := metav1.Now()
+		tenant.Status.LastGovernanceDecisionFieldBackfillAt = &now
+	}
+
 	status := tenant.DeepCopy()
 	shouldSync := tenant.Spec.PolicySync && generationChanged
 	if shouldSync {
@@ -297,6 +307,36 @@ func governanceEvidenceBackfillPayload(spec platformv1alpha1.GovernanceEvidenceB
 		payload["integration_id"] = integrationID
 	}
 	return payload
+}
+
+func governanceDecisionFieldBackfillPayload(spec platformv1alpha1.GovernanceDecisionFieldBackfillSpec) map[string]any {
+	limit := int(spec.Limit)
+	if limit <= 0 {
+		limit = 500
+	}
+	if limit > 5000 {
+		limit = 5000
+	}
+
+	windowHours := int(spec.WindowHours)
+	if windowHours <= 0 {
+		windowHours = 24 * 30
+	}
+	if windowHours > 24*120 {
+		windowHours = 24 * 120
+	}
+
+	includeBlockedEvents := true
+	if spec.IncludeBlockedEvents != nil {
+		includeBlockedEvents = *spec.IncludeBlockedEvents
+	}
+
+	return map[string]any{
+		"limit":                  limit,
+		"window_hours":           windowHours,
+		"include_blocked_events": includeBlockedEvents,
+		"dry_run":                spec.DryRun,
+	}
 }
 
 func uniqueNonEmptyStrings(values []string) []string {

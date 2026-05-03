@@ -43,25 +43,39 @@ type GovernanceEvidenceBackfillSpec struct {
 	DryRun               bool   `json:"dryRun,omitempty"`
 }
 
+type GovernanceDecisionFieldBackfillSpec struct {
+	Enabled bool `json:"enabled,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=5000
+	Limit int32 `json:"limit,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=2880
+	WindowHours          int32 `json:"windowHours,omitempty"`
+	IncludeBlockedEvents *bool `json:"includeBlockedEvents,omitempty"`
+	DryRun               bool  `json:"dryRun,omitempty"`
+}
+
 type ThothTenantSpec struct {
-	TenantID                   string                          `json:"tenantId"`
-	ApexDomain                 string                          `json:"apexDomain,omitempty"`
-	APIBaseURL                 string                          `json:"apiBaseURL,omitempty"`
-	AuthSecretRef              SecretKeyReference              `json:"authSecretRef"`
-	Settings                   map[string]apiextensionsv1.JSON `json:"settings,omitempty"`
-	MDMProvider                *MDMProviderSpec                `json:"mdmProvider,omitempty"`
-	PolicySync                 bool                            `json:"policySync,omitempty"`
-	PackAssignments            []PackAssignmentSpec            `json:"packAssignments,omitempty"`
-	GovernanceEvidenceBackfill *GovernanceEvidenceBackfillSpec `json:"governanceEvidenceBackfill,omitempty"`
+	TenantID                        string                               `json:"tenantId"`
+	ApexDomain                      string                               `json:"apexDomain,omitempty"`
+	APIBaseURL                      string                               `json:"apiBaseURL,omitempty"`
+	AuthSecretRef                   SecretKeyReference                   `json:"authSecretRef"`
+	Settings                        map[string]apiextensionsv1.JSON      `json:"settings,omitempty"`
+	MDMProvider                     *MDMProviderSpec                     `json:"mdmProvider,omitempty"`
+	PolicySync                      bool                                 `json:"policySync,omitempty"`
+	PackAssignments                 []PackAssignmentSpec                 `json:"packAssignments,omitempty"`
+	GovernanceEvidenceBackfill      *GovernanceEvidenceBackfillSpec      `json:"governanceEvidenceBackfill,omitempty"`
+	GovernanceDecisionFieldBackfill *GovernanceDecisionFieldBackfillSpec `json:"governanceDecisionFieldBackfill,omitempty"`
 }
 
 type ThothTenantStatus struct {
-	Phase                            string             `json:"phase,omitempty"`
-	ObservedGeneration               int64              `json:"observedGeneration,omitempty"`
-	EndpointURL                      string             `json:"endpointUrl,omitempty"`
-	LastPolicySyncAt                 *metav1.Time       `json:"lastPolicySyncAt,omitempty"`
-	LastGovernanceEvidenceBackfillAt *metav1.Time       `json:"lastGovernanceEvidenceBackfillAt,omitempty"`
-	Conditions                       []metav1.Condition `json:"conditions,omitempty"`
+	Phase                                 string             `json:"phase,omitempty"`
+	ObservedGeneration                    int64              `json:"observedGeneration,omitempty"`
+	EndpointURL                           string             `json:"endpointUrl,omitempty"`
+	LastPolicySyncAt                      *metav1.Time       `json:"lastPolicySyncAt,omitempty"`
+	LastGovernanceEvidenceBackfillAt      *metav1.Time       `json:"lastGovernanceEvidenceBackfillAt,omitempty"`
+	LastGovernanceDecisionFieldBackfillAt *metav1.Time       `json:"lastGovernanceDecisionFieldBackfillAt,omitempty"`
+	Conditions                            []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
