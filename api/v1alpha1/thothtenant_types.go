@@ -33,23 +33,35 @@ type PackAssignmentSpec struct {
 	OverridesByPack  map[string]apiextensionsv1.JSON `json:"overridesByPack,omitempty"`
 }
 
+type GovernanceEvidenceBackfillSpec struct {
+	Enabled bool `json:"enabled,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=1000
+	Limit                int32  `json:"limit,omitempty"`
+	IncludeBlockedEvents *bool  `json:"includeBlockedEvents,omitempty"`
+	IntegrationID        string `json:"integrationId,omitempty"`
+	DryRun               bool   `json:"dryRun,omitempty"`
+}
+
 type ThothTenantSpec struct {
-	TenantID        string                          `json:"tenantId"`
-	ApexDomain      string                          `json:"apexDomain,omitempty"`
-	APIBaseURL      string                          `json:"apiBaseURL,omitempty"`
-	AuthSecretRef   SecretKeyReference              `json:"authSecretRef"`
-	Settings        map[string]apiextensionsv1.JSON `json:"settings,omitempty"`
-	MDMProvider     *MDMProviderSpec                `json:"mdmProvider,omitempty"`
-	PolicySync      bool                            `json:"policySync,omitempty"`
-	PackAssignments []PackAssignmentSpec            `json:"packAssignments,omitempty"`
+	TenantID                   string                          `json:"tenantId"`
+	ApexDomain                 string                          `json:"apexDomain,omitempty"`
+	APIBaseURL                 string                          `json:"apiBaseURL,omitempty"`
+	AuthSecretRef              SecretKeyReference              `json:"authSecretRef"`
+	Settings                   map[string]apiextensionsv1.JSON `json:"settings,omitempty"`
+	MDMProvider                *MDMProviderSpec                `json:"mdmProvider,omitempty"`
+	PolicySync                 bool                            `json:"policySync,omitempty"`
+	PackAssignments            []PackAssignmentSpec            `json:"packAssignments,omitempty"`
+	GovernanceEvidenceBackfill *GovernanceEvidenceBackfillSpec `json:"governanceEvidenceBackfill,omitempty"`
 }
 
 type ThothTenantStatus struct {
-	Phase              string             `json:"phase,omitempty"`
-	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
-	EndpointURL        string             `json:"endpointUrl,omitempty"`
-	LastPolicySyncAt   *metav1.Time       `json:"lastPolicySyncAt,omitempty"`
-	Conditions         []metav1.Condition `json:"conditions,omitempty"`
+	Phase                            string             `json:"phase,omitempty"`
+	ObservedGeneration               int64              `json:"observedGeneration,omitempty"`
+	EndpointURL                      string             `json:"endpointUrl,omitempty"`
+	LastPolicySyncAt                 *metav1.Time       `json:"lastPolicySyncAt,omitempty"`
+	LastGovernanceEvidenceBackfillAt *metav1.Time       `json:"lastGovernanceEvidenceBackfillAt,omitempty"`
+	Conditions                       []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true

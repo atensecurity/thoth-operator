@@ -82,3 +82,46 @@ func TestPackAssignmentPayloadRejectsMissingPackIDs(t *testing.T) {
 		t.Fatalf("expected error for missing packIds")
 	}
 }
+
+func TestGovernanceEvidenceBackfillPayloadDefaults(t *testing.T) {
+	payload := governanceEvidenceBackfillPayload(platformv1alpha1.GovernanceEvidenceBackfillSpec{
+		Enabled: true,
+	})
+
+	if payload["limit"] != 200 {
+		t.Fatalf("limit = %#v, want 200", payload["limit"])
+	}
+	if payload["include_blocked_events"] != true {
+		t.Fatalf("include_blocked_events = %#v, want true", payload["include_blocked_events"])
+	}
+	if payload["dry_run"] != false {
+		t.Fatalf("dry_run = %#v, want false", payload["dry_run"])
+	}
+	if _, ok := payload["integration_id"]; ok {
+		t.Fatalf("integration_id should be omitted by default")
+	}
+}
+
+func TestGovernanceEvidenceBackfillPayloadRespectsOverrides(t *testing.T) {
+	includeBlockedEvents := false
+	payload := governanceEvidenceBackfillPayload(platformv1alpha1.GovernanceEvidenceBackfillSpec{
+		Enabled:              true,
+		Limit:                4000,
+		IncludeBlockedEvents: &includeBlockedEvents,
+		IntegrationID:        "thoth-runtime",
+		DryRun:               true,
+	})
+
+	if payload["limit"] != 1000 {
+		t.Fatalf("limit = %#v, want 1000", payload["limit"])
+	}
+	if payload["include_blocked_events"] != false {
+		t.Fatalf("include_blocked_events = %#v, want false", payload["include_blocked_events"])
+	}
+	if payload["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", payload["dry_run"])
+	}
+	if payload["integration_id"] != "thoth-runtime" {
+		t.Fatalf("integration_id = %#v, want thoth-runtime", payload["integration_id"])
+	}
+}

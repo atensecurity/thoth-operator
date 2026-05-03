@@ -120,6 +120,21 @@ spec:
                         type: object
                         additionalProperties:
                           x-kubernetes-preserve-unknown-fields: true
+                governanceEvidenceBackfill:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    limit:
+                      type: integer
+                      minimum: 1
+                      maximum: 1000
+                    includeBlockedEvents:
+                      type: boolean
+                    integrationId:
+                      type: string
+                    dryRun:
+                      type: boolean
                 policySync:
                   type: boolean
             status:
@@ -133,6 +148,9 @@ spec:
                 endpointUrl:
                   type: string
                 lastPolicySyncAt:
+                  type: string
+                  format: date-time
+                lastGovernanceEvidenceBackfillAt:
                   type: string
                   format: date-time
                 conditions:

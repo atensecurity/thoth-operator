@@ -115,6 +115,16 @@ func (r *ThothTenantReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	if generationChanged && tenant.Spec.GovernanceEvidenceBackfill != nil && tenant.Spec.GovernanceEvidenceBackfill.Enabled {
+		payload := governanceEvidenceBackfillPayload(*tenant.Spec.GovernanceEvidenceBackfill)
+		if _, err := thothClient.BackfillGovernanceEvidence(ctx, payload); err != nil {
+			r.setNotReadyStatus(ctx, &tenant, "GovernanceEvidenceBackfillError", err.Error())
+			return ctrl.Result{RequeueAfter: 45 * time.Second}, nil
+		}
+		now := metav1.Now()
+		tenant.Status.LastGovernanceEvidenceBackfillAt = &now
+	}
+
 	status := tenant.DeepCopy()
 	shouldSync := tenant.Spec.PolicySync && generationChanged
 	if shouldSync {
@@ -261,6 +271,32 @@ func packAssignmentPayload(spec platformv1alpha1.PackAssignmentSpec) (map[string
 		}
 	}
 	return payload, nil
+}
+
+func governanceEvidenceBackfillPayload(spec platformv1alpha1.GovernanceEvidenceBackfillSpec) map[string]any {
+	limit := int(spec.Limit)
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	includeBlockedEvents := true
+	if spec.IncludeBlockedEvents != nil {
+		includeBlockedEvents = *spec.IncludeBlockedEvents
+	}
+
+	payload := map[string]any{
+		"limit":                  limit,
+		"include_blocked_events": includeBlockedEvents,
+		"dry_run":                spec.DryRun,
+	}
+
+	if integrationID := strings.TrimSpace(spec.IntegrationID); integrationID != "" {
+		payload["integration_id"] = integrationID
+	}
+	return payload
 }
 
 func uniqueNonEmptyStrings(values []string) []string {

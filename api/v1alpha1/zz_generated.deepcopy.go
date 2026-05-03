@@ -84,6 +84,24 @@ func (in *PackAssignmentSpec) DeepCopy() *PackAssignmentSpec {
 	return out
 }
 
+func (in *GovernanceEvidenceBackfillSpec) DeepCopyInto(out *GovernanceEvidenceBackfillSpec) {
+	*out = *in
+	if in.IncludeBlockedEvents != nil {
+		in, out := &in.IncludeBlockedEvents, &out.IncludeBlockedEvents
+		*out = new(bool)
+		**out = **in
+	}
+}
+
+func (in *GovernanceEvidenceBackfillSpec) DeepCopy() *GovernanceEvidenceBackfillSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(GovernanceEvidenceBackfillSpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
 func (in *ThothTenantSpec) DeepCopyInto(out *ThothTenantSpec) {
 	*out = *in
 	in.AuthSecretRef.DeepCopyInto(&out.AuthSecretRef)
@@ -106,6 +124,11 @@ func (in *ThothTenantSpec) DeepCopyInto(out *ThothTenantSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.GovernanceEvidenceBackfill != nil {
+		in, out := &in.GovernanceEvidenceBackfill, &out.GovernanceEvidenceBackfill
+		*out = new(GovernanceEvidenceBackfillSpec)
+		(*in).DeepCopyInto(*out)
+	}
 }
 
 func (in *ThothTenantSpec) DeepCopy() *ThothTenantSpec {
@@ -121,6 +144,10 @@ func (in *ThothTenantStatus) DeepCopyInto(out *ThothTenantStatus) {
 	*out = *in
 	if in.LastPolicySyncAt != nil {
 		in, out := &in.LastPolicySyncAt, &out.LastPolicySyncAt
+		*out = (*in).DeepCopy()
+	}
+	if in.LastGovernanceEvidenceBackfillAt != nil {
+		in, out := &in.LastGovernanceEvidenceBackfillAt, &out.LastGovernanceEvidenceBackfillAt
 		*out = (*in).DeepCopy()
 	}
 	if in.Conditions != nil {

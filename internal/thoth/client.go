@@ -117,9 +117,18 @@ func (c *Client) ApplyPacksBulk(ctx context.Context, payload map[string]any) err
 	return err
 }
 
+func (c *Client) BackfillGovernanceEvidence(ctx context.Context, payload map[string]any) (map[string]any, error) {
+	return c.doJSON(ctx, http.MethodPost, c.governancePath("evidence/thoth/backfill"), payload, nil, false)
+}
+
 func (c *Client) tenantPath(path string) string {
 	trimmed := strings.TrimPrefix(strings.TrimSpace(path), "/")
 	return fmt.Sprintf("/%s/thoth/%s", c.tenantID, trimmed)
+}
+
+func (c *Client) governancePath(path string) string {
+	trimmed := strings.TrimPrefix(strings.TrimSpace(path), "/")
+	return fmt.Sprintf("/%s/governance/%s", c.tenantID, trimmed)
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, payload map[string]any, out any, retryable bool) (map[string]any, error) {

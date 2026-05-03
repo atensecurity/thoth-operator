@@ -32,4 +32,10 @@ spec:
     provider: kandji
     endpointUrl: "https://tenant.api.kandji.io"
     enabled: true
+  governanceEvidenceBackfill:
+    enabled: true
+    limit: 200
+    includeBlockedEvents: true
+    integrationId: thoth-runtime
+    dryRun: false
   policySync: true
