@@ -44,6 +44,46 @@ func (in *MDMProviderSpec) DeepCopy() *MDMProviderSpec {
 	return out
 }
 
+func (in *PackAssignmentSpec) DeepCopyInto(out *PackAssignmentSpec) {
+	*out = *in
+	if in.PackIDs != nil {
+		in, out := &in.PackIDs, &out.PackIDs
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.AgentIDs != nil {
+		in, out := &in.AgentIDs, &out.AgentIDs
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.FleetIDs != nil {
+		in, out := &in.FleetIDs, &out.FleetIDs
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.EndpointIDs != nil {
+		in, out := &in.EndpointIDs, &out.EndpointIDs
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.OverridesByPack != nil {
+		in, out := &in.OverridesByPack, &out.OverridesByPack
+		*out = make(map[string]apiextensionsv1.JSON, len(*in))
+		for key, val := range *in {
+			(*out)[key] = *val.DeepCopy()
+		}
+	}
+}
+
+func (in *PackAssignmentSpec) DeepCopy() *PackAssignmentSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(PackAssignmentSpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
 func (in *ThothTenantSpec) DeepCopyInto(out *ThothTenantSpec) {
 	*out = *in
 	in.AuthSecretRef.DeepCopyInto(&out.AuthSecretRef)
@@ -58,6 +98,13 @@ func (in *ThothTenantSpec) DeepCopyInto(out *ThothTenantSpec) {
 		in, out := &in.MDMProvider, &out.MDMProvider
 		*out = new(MDMProviderSpec)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.PackAssignments != nil {
+		in, out := &in.PackAssignments, &out.PackAssignments
+		*out = make([]PackAssignmentSpec, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 }
 

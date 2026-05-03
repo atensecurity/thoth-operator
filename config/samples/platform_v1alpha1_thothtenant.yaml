@@ -12,4 +12,10 @@ spec:
   settings:
     decisionWebhookEnabled: true
     decisionWebhookUrl: "https://hooks.example.com/thoth"
+  packAssignments:
+    - packIds:
+        - soc2-type2
+        - fedramp-moderate
+      environment: prod
+      allAgents: true
   policySync: true

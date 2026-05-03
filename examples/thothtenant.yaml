@@ -21,6 +21,13 @@ spec:
   settings:
     enforceMcpPolicies: true
     approvalMode: "step_up"
+  packAssignments:
+    - packIds:
+        - soc2-type2
+        - gdpr-ai-agents
+      environment: prod
+      allAgents: true
+      approvalPolicyId: default
   mdmProvider:
     provider: kandji
     endpointUrl: "https://tenant.api.kandji.io"

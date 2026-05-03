@@ -11,6 +11,7 @@ This operator reconciles a `ThothTenant` custom resource and applies desired sta
 
 - Tenant settings (`/{tenant}/thoth/settings`)
 - MDM provider upsert (`/{tenant}/thoth/mdm/providers`)
+- Bulk compliance pack assignments (`/{tenant}/thoth/packs/apply`)
 - Optional policy sync trigger (`/{tenant}/thoth/policies/sync`)
 
 ## Recommended Pattern
@@ -52,6 +53,7 @@ kubectl apply -f examples/thothtenant.yaml
 - `authSecretRef` (required: Kubernetes secret name/key containing admin bearer token)
 - `settings` (optional arbitrary JSON map)
 - `mdmProvider` (optional provider block)
+- `packAssignments` (optional list of bulk pack apply operations)
 - `policySync` (optional bool to trigger policy sync on generation changes)
 
 ## Security Notes

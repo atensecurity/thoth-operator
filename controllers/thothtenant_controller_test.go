@@ -61,3 +61,24 @@ func TestSecretRefsTenant(t *testing.T) {
 		t.Fatalf("did not expect unrelated secret to match")
 	}
 }
+
+func TestPackAssignmentPayloadDefaultsToAllAgents(t *testing.T) {
+	payload, err := packAssignmentPayload(platformv1alpha1.PackAssignmentSpec{
+		PackIDs: []string{"soc2-type2", "gdpr-ai-agents"},
+	})
+	if err != nil {
+		t.Fatalf("packAssignmentPayload() error = %v", err)
+	}
+
+	allAgents, ok := payload["all_agents"].(bool)
+	if !ok || !allAgents {
+		t.Fatalf("expected all_agents=true when no selectors are provided")
+	}
+}
+
+func TestPackAssignmentPayloadRejectsMissingPackIDs(t *testing.T) {
+	_, err := packAssignmentPayload(platformv1alpha1.PackAssignmentSpec{})
+	if err == nil {
+		t.Fatalf("expected error for missing packIds")
+	}
+}

@@ -112,6 +112,11 @@ func (c *Client) TriggerPolicySync(ctx context.Context) error {
 	return err
 }
 
+func (c *Client) ApplyPacksBulk(ctx context.Context, payload map[string]any) error {
+	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("packs/apply"), payload, nil, false)
+	return err
+}
+
 func (c *Client) tenantPath(path string) string {
 	trimmed := strings.TrimPrefix(strings.TrimSpace(path), "/")
 	return fmt.Sprintf("/%s/thoth/%s", c.tenantID, trimmed)

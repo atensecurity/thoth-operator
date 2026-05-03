@@ -22,14 +22,26 @@ type MDMProviderSpec struct {
 	APITokenSecretRef *SecretKeyReference `json:"apiTokenSecretRef,omitempty"`
 }
 
+type PackAssignmentSpec struct {
+	PackIDs          []string                        `json:"packIds"`
+	AllAgents        bool                            `json:"allAgents,omitempty"`
+	AgentIDs         []string                        `json:"agentIds,omitempty"`
+	FleetIDs         []string                        `json:"fleetIds,omitempty"`
+	EndpointIDs      []string                        `json:"endpointIds,omitempty"`
+	Environment      string                          `json:"environment,omitempty"`
+	ApprovalPolicyID string                          `json:"approvalPolicyId,omitempty"`
+	OverridesByPack  map[string]apiextensionsv1.JSON `json:"overridesByPack,omitempty"`
+}
+
 type ThothTenantSpec struct {
-	TenantID      string                          `json:"tenantId"`
-	ApexDomain    string                          `json:"apexDomain,omitempty"`
-	APIBaseURL    string                          `json:"apiBaseURL,omitempty"`
-	AuthSecretRef SecretKeyReference              `json:"authSecretRef"`
-	Settings      map[string]apiextensionsv1.JSON `json:"settings,omitempty"`
-	MDMProvider   *MDMProviderSpec                `json:"mdmProvider,omitempty"`
-	PolicySync    bool                            `json:"policySync,omitempty"`
+	TenantID        string                          `json:"tenantId"`
+	ApexDomain      string                          `json:"apexDomain,omitempty"`
+	APIBaseURL      string                          `json:"apiBaseURL,omitempty"`
+	AuthSecretRef   SecretKeyReference              `json:"authSecretRef"`
+	Settings        map[string]apiextensionsv1.JSON `json:"settings,omitempty"`
+	MDMProvider     *MDMProviderSpec                `json:"mdmProvider,omitempty"`
+	PolicySync      bool                            `json:"policySync,omitempty"`
+	PackAssignments []PackAssignmentSpec            `json:"packAssignments,omitempty"`
 }
 
 type ThothTenantStatus struct {

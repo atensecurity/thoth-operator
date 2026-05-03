@@ -100,8 +100,23 @@ func (r *ThothTenantReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	generationChanged := tenant.Status.ObservedGeneration != tenant.Generation
+	if generationChanged && len(tenant.Spec.PackAssignments) > 0 {
+		for i, assignment := range tenant.Spec.PackAssignments {
+			payload, err := packAssignmentPayload(assignment)
+			if err != nil {
+				r.setNotReadyStatus(ctx, &tenant, "PackAssignmentConfigError", fmt.Sprintf("packAssignments[%d]: %v", i, err))
+				return ctrl.Result{RequeueAfter: 45 * time.Second}, nil
+			}
+			if err := thothClient.ApplyPacksBulk(ctx, payload); err != nil {
+				r.setNotReadyStatus(ctx, &tenant, "PackAssignmentApplyError", fmt.Sprintf("packAssignments[%d]: %v", i, err))
+				return ctrl.Result{RequeueAfter: 45 * time.Second}, nil
+			}
+		}
+	}
+
 	status := tenant.DeepCopy()
-	shouldSync := tenant.Spec.PolicySync && tenant.Status.ObservedGeneration != tenant.Generation
+	shouldSync := tenant.Spec.PolicySync && generationChanged
 	if shouldSync {
 		if err := thothClient.TriggerPolicySync(ctx); err != nil {
 			r.setNotReadyStatus(ctx, &tenant, "PolicySyncError", err.Error())
@@ -187,6 +202,85 @@ func (r *ThothTenantReconciler) mdmPayload(ctx context.Context, tenant *platform
 		payload["api_key"] = token
 	}
 	return payload, nil
+}
+
+func packAssignmentPayload(spec platformv1alpha1.PackAssignmentSpec) (map[string]any, error) {
+	packIDs := uniqueNonEmptyStrings(spec.PackIDs)
+	if len(packIDs) == 0 {
+		return nil, fmt.Errorf("packIds must include at least one value")
+	}
+
+	agentIDs := uniqueNonEmptyStrings(spec.AgentIDs)
+	fleetIDs := uniqueNonEmptyStrings(spec.FleetIDs)
+	endpointIDs := uniqueNonEmptyStrings(spec.EndpointIDs)
+
+	allAgents := spec.AllAgents
+	if !allAgents && len(agentIDs) == 0 && len(fleetIDs) == 0 && len(endpointIDs) == 0 {
+		allAgents = true
+	}
+
+	payload := map[string]any{
+		"pack_ids": packIDs,
+	}
+	if allAgents {
+		payload["all_agents"] = true
+	}
+	if len(agentIDs) > 0 {
+		payload["agent_ids"] = agentIDs
+	}
+	if len(fleetIDs) > 0 {
+		payload["fleet_ids"] = fleetIDs
+	}
+	if len(endpointIDs) > 0 {
+		payload["endpoint_ids"] = endpointIDs
+	}
+	if environment := strings.TrimSpace(spec.Environment); environment != "" {
+		payload["environment"] = environment
+	}
+	if approvalPolicyID := strings.TrimSpace(spec.ApprovalPolicyID); approvalPolicyID != "" {
+		payload["approval_policy_id"] = approvalPolicyID
+	}
+	if len(spec.OverridesByPack) > 0 {
+		overrides := make(map[string]map[string]any, len(spec.OverridesByPack))
+		for packID, raw := range spec.OverridesByPack {
+			trimmedPackID := strings.TrimSpace(packID)
+			if trimmedPackID == "" || len(raw.Raw) == 0 {
+				continue
+			}
+			var decoded map[string]any
+			if err := json.Unmarshal(raw.Raw, &decoded); err != nil {
+				return nil, fmt.Errorf("decode overridesByPack[%s]: %w", trimmedPackID, err)
+			}
+			if decoded == nil {
+				decoded = map[string]any{}
+			}
+			overrides[trimmedPackID] = decoded
+		}
+		if len(overrides) > 0 {
+			payload["overrides_by_pack"] = overrides
+		}
+	}
+	return payload, nil
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
 }
 
 func decodeSettingsMap(settings map[string]apiextensionsv1.JSON) (map[string]any, error) {
