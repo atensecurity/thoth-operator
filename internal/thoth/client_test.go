@@ -103,6 +103,81 @@ func TestBackfillGovernanceEvidencePostsExpectedPathAndPayload(t *testing.T) {
 	}
 }
 
+func TestBackfillGovernanceEvidenceFallsBackOnMethodNotAllowed(t *testing.T) {
+	t.Parallel()
+
+	var gotPaths []string
+	var gotAuth string
+	var gotPayload map[string]any
+	decodeErrCh := make(chan error, 2)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPaths = append(gotPaths, r.URL.Path)
+		gotAuth = r.Header.Get("Authorization")
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&gotPayload); err != nil {
+			decodeErrCh <- err
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		decodeErrCh <- nil
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/delta-arc/governance/evidence/thoth/backfill":
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_, _ = w.Write([]byte(`{"error":"method_not_allowed","message":"Method Not Allowed"}`))
+		case "/delta-arc/thoth/governance/evidence/thoth/backfill":
+			_, _ = w.Write([]byte(`{"created":3,"evidence_ids":["e3"]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(ClientOptions{
+		TenantID:   "delta-arc",
+		APIBaseURL: srv.URL,
+		AuthToken:  "test-token",
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	resp, err := client.BackfillGovernanceEvidence(context.Background(), map[string]any{
+		"limit":                  50,
+		"include_blocked_events": true,
+		"dry_run":                false,
+	})
+	if err != nil {
+		t.Fatalf("BackfillGovernanceEvidence() error = %v", err)
+	}
+	if decodeErr := <-decodeErrCh; decodeErr != nil {
+		t.Fatalf("decode request body (attempt 1): %v", decodeErr)
+	}
+	if decodeErr := <-decodeErrCh; decodeErr != nil {
+		t.Fatalf("decode request body (attempt 2): %v", decodeErr)
+	}
+
+	if len(gotPaths) != 2 {
+		t.Fatalf("request count = %d, want 2", len(gotPaths))
+	}
+	if gotPaths[0] != "/delta-arc/governance/evidence/thoth/backfill" {
+		t.Fatalf("first path = %q", gotPaths[0])
+	}
+	if gotPaths[1] != "/delta-arc/thoth/governance/evidence/thoth/backfill" {
+		t.Fatalf("second path = %q", gotPaths[1])
+	}
+	if gotAuth != "Bearer test-token" {
+		t.Fatalf("authorization header = %q", gotAuth)
+	}
+	if gotPayload["limit"] != float64(50) {
+		t.Fatalf("payload.limit = %#v", gotPayload["limit"])
+	}
+	if created := resp["created"]; created != float64(3) {
+		t.Fatalf("response.created = %#v", created)
+	}
+}
+
 func TestBackfillGovernanceDecisionFieldsPostsExpectedPathAndPayload(t *testing.T) {
 	t.Parallel()
 

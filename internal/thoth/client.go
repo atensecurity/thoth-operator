@@ -118,7 +118,14 @@ func (c *Client) ApplyPacksBulk(ctx context.Context, payload map[string]any) err
 }
 
 func (c *Client) BackfillGovernanceEvidence(ctx context.Context, payload map[string]any) (map[string]any, error) {
-	return c.doJSON(ctx, http.MethodPost, c.governancePath("evidence/thoth/backfill"), payload, nil, false)
+	resp, err := c.doJSON(ctx, http.MethodPost, c.governancePath("evidence/thoth/backfill"), payload, nil, false)
+	if err == nil {
+		return resp, nil
+	}
+	if !isEvidenceBackfillCompatibilityError(err) {
+		return nil, err
+	}
+	return c.doJSON(ctx, http.MethodPost, c.tenantPath("governance/evidence/thoth/backfill"), payload, nil, false)
 }
 
 func (c *Client) BackfillGovernanceDecisionFields(ctx context.Context, payload map[string]any) (map[string]any, error) {
@@ -249,6 +256,14 @@ func decodeAPIError(status int, body []byte) error {
 		}
 	}
 	return apiErr
+}
+
+func isEvidenceBackfillCompatibilityError(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusMethodNotAllowed
 }
 
 func isRetryableStatus(code int) bool {
