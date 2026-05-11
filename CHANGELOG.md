@@ -6,6 +6,16 @@ All notable changes to `thoth-operator` are documented in this file.
 
 - No changes yet.
 
+## 0.1.1 - 2026-05-11
+
+### Fixed
+
+- Release workflow now resolves Helm OCI chart digests using the full chart reference
+  (`ghcr.io/.../charts/thoth-operator/thoth-operator:<version>`), which fixes
+  `MANIFEST_UNKNOWN` failures during chart digest/signing.
+- Release packaging step now derives the chart name from `Chart.yaml` and validates
+  the expected chart archive path before push/sign operations.
+
 ## 0.1.0 - 2026-05-05
 
 ### Added
