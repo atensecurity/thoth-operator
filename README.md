@@ -10,11 +10,15 @@ Kubernetes operator for managing Aten Security Thoth control-plane configuration
 This operator reconciles a `ThothTenant` custom resource and applies desired state to the Thoth headless governance control plane:
 
 - Tenant settings (`/{tenant}/thoth/settings`)
+- Optional webhook test (`/{tenant}/thoth/settings/webhook/test`)
 - MDM provider upsert (`/{tenant}/thoth/mdm/providers`)
+- Optional MDM sync run + polling (`/{tenant}/thoth/mdm/providers/{provider}/sync`)
+- Policy bundle provisioning (`/{tenant}/thoth/policy-bundles`)
 - Bulk compliance pack assignments (`/{tenant}/thoth/packs/apply`)
 - Optional policy sync trigger (`/{tenant}/thoth/policies/sync`)
 - Optional governance evidence backfill (`/{tenant}/governance/evidence/thoth/backfill`)
 - Optional decision-field backfill (`/{tenant}/thoth/governance/backfill-decision-fields`)
+- Optional redacted decision metadata export (`/{tenant}/thoth/governance/decision-metadata/export`)
 
 ## Recommended Pattern
 
@@ -52,13 +56,31 @@ kubectl apply -f examples/thothtenant.yaml
 - `tenantId` (required)
 - `apexDomain` (optional, default `atensecurity.com`)
 - `apiBaseURL` (optional override; otherwise derived as `https://grid.{tenantId}.{apexDomain}`)
+- `authMode` (optional: `auto`/`bearer`/`api_key`; default `auto`)
 - `authSecretRef` (required: Kubernetes secret name/key containing admin bearer token)
 - `settings` (optional arbitrary JSON map)
 - `mdmProvider` (optional provider block)
+- `mdmSync` (optional one-shot sync on spec generation change)
+- `webhookSettings` (optional typed webhook config + webhook test on apply)
+- `policyBundles` (optional list of Cedar/OPA deterministic policies to create/update)
 - `packAssignments` (optional list of bulk pack apply operations)
 - `policySync` (optional bool to trigger policy sync on generation changes)
 - `governanceEvidenceBackfill` (optional block to trigger evidence backfill on generation changes)
 - `governanceDecisionFieldBackfill` (optional block to backfill decision evidence fields)
+- `decisionMetadataExport` (optional periodic export; defaults to internal Moses collector)
+
+## Decision Metadata Export
+
+`decisionMetadataExport` is designed for model-training pipelines without leaking raw user/tool content:
+
+- Raw content and tool arguments are not exported.
+- Sensitive identities are HMAC-SHA256 hashed per tenant.
+- Export includes decision context (policy IDs, reason codes, action class, trace IDs, parameter keys).
+- By default, payload is delivered to the internal GovAPI collector:
+  `POST /:tenant-id/thoth/governance/moses/training/decision-metadata/collect`.
+- If `decisionMetadataExport.destinationUrl` is set, payload is delivered to that external endpoint instead.
+
+Use `decisionMetadataExport.authTokenSecretRef` when your external collector requires bearer auth.
 
 ## Security Notes
 
@@ -79,6 +101,8 @@ kubectl apply -f examples/thothtenant.yaml
 
 - Public release workflow: `.github/workflows/release.yml`
 - Trigger: signed tag push (`vX.Y.Z` or `vX.Y.Z-rcN`) in `atensecurity/thoth-operator`
+- GitHub release notes are sourced from the matching section in `CHANGELOG.md`
+  (for RC tags, falls back to base version or `Unreleased`).
 - Outputs:
   - Multi-arch image: `ghcr.io/atensecurity/thoth-operator:<version>`
   - OCI Helm chart: `oci://ghcr.io/atensecurity/charts/thoth-operator:<version>`

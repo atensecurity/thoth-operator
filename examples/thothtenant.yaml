@@ -1,12 +1,3 @@
-apiVersion: v1
-kind: Secret
-metadata:
-  name: thoth-admin-token
-  namespace: thoth-system
-type: Opaque
-stringData:
-  token: "REPLACE_WITH_THOTH_ADMIN_BEARER_TOKEN"
----
 apiVersion: platform.atensecurity.com/v1alpha1
 kind: ThothTenant
 metadata:
@@ -15,12 +6,35 @@ metadata:
 spec:
   tenantId: demo-tenant
   apexDomain: atensecurity.com
+  authMode: auto
   authSecretRef:
     name: thoth-admin-token
     key: token
   settings:
     enforceMcpPolicies: true
     approvalMode: "step_up"
+  webhookSettings:
+    enabled: true
+    url: "https://hooks.example.com/thoth"
+    testWebhookOnApply: true
+  policyBundles:
+    - name: trantor-mutual-global-dlp
+      framework: OPA
+      sourceUri: "s3://thoth-policy-bundles/trantor/global-dlp/policy.rego"
+      s3VersionId: "v2"
+      expectedHash: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      assignments:
+        - agent:coding-agent
+        - agent:security-analyst-agent
+      status: active
+      enforcementMode: enforce
+    - name: trantor-mutual-security-analyst
+      framework: CEDAR
+      sourceUri: "s3://thoth-policy-bundles/trantor/security-analyst/policy.cedar"
+      assignments:
+        - agent:security-analyst-agent
+      status: active
+      enforcementMode: enforce
   packAssignments:
     - packIds:
         - soc2-type2
@@ -28,10 +42,20 @@ spec:
       environment: prod
       allAgents: true
       approvalPolicyId: default
+      mismatchBoost: 0.15
+      delegationBoost: 0.10
+      trustFloor: 0.35
+      criticalThreshold: 0.85
   mdmProvider:
     provider: kandji
     endpointUrl: "https://tenant.api.kandji.io"
     enabled: true
+  mdmSync:
+    enabled: true
+    providerName: kandji
+    waitForCompletion: true
+    pollIntervalSeconds: 10
+    timeoutSeconds: 300
   governanceEvidenceBackfill:
     enabled: true
     limit: 200
@@ -44,4 +68,9 @@ spec:
     windowHours: 720
     includeBlockedEvents: true
     dryRun: false
+  decisionMetadataExport:
+    enabled: true
+    intervalMinutes: 30
+    batchLimit: 1000
+    lookbackHours: 24
   policySync: true

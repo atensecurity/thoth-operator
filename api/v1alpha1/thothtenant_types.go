@@ -22,15 +22,48 @@ type MDMProviderSpec struct {
 	APITokenSecretRef *SecretKeyReference `json:"apiTokenSecretRef,omitempty"`
 }
 
+type MDMSyncSpec struct {
+	Enabled             bool   `json:"enabled,omitempty"`
+	ProviderName        string `json:"providerName,omitempty"`
+	WaitForCompletion   *bool  `json:"waitForCompletion,omitempty"`
+	PollIntervalSeconds int32  `json:"pollIntervalSeconds,omitempty"`
+	TimeoutSeconds      int32  `json:"timeoutSeconds,omitempty"`
+}
+
+type WebhookSettingsSpec struct {
+	Enabled            *bool               `json:"enabled,omitempty"`
+	URL                string              `json:"url,omitempty"`
+	SecretRef          *SecretKeyReference `json:"secretRef,omitempty"`
+	TestWebhookOnApply bool                `json:"testWebhookOnApply,omitempty"`
+}
+
+type PolicyBundleSpec struct {
+	Name            string   `json:"name"`
+	Description     string   `json:"description,omitempty"`
+	Framework       string   `json:"framework"`
+	RawPolicy       string   `json:"rawPolicy,omitempty"`
+	SourceURI       string   `json:"sourceUri,omitempty"`
+	S3URI           string   `json:"s3Uri,omitempty"`
+	S3VersionID     string   `json:"s3VersionId,omitempty"`
+	ExpectedHash    string   `json:"expectedHash,omitempty"`
+	Assignments     []string `json:"assignments,omitempty"`
+	Status          string   `json:"status,omitempty"`
+	EnforcementMode string   `json:"enforcementMode,omitempty"`
+}
+
 type PackAssignmentSpec struct {
-	PackIDs          []string                        `json:"packIds"`
-	AllAgents        bool                            `json:"allAgents,omitempty"`
-	AgentIDs         []string                        `json:"agentIds,omitempty"`
-	FleetIDs         []string                        `json:"fleetIds,omitempty"`
-	EndpointIDs      []string                        `json:"endpointIds,omitempty"`
-	Environment      string                          `json:"environment,omitempty"`
-	ApprovalPolicyID string                          `json:"approvalPolicyId,omitempty"`
-	OverridesByPack  map[string]apiextensionsv1.JSON `json:"overridesByPack,omitempty"`
+	PackIDs           []string                        `json:"packIds"`
+	AllAgents         bool                            `json:"allAgents,omitempty"`
+	AgentIDs          []string                        `json:"agentIds,omitempty"`
+	FleetIDs          []string                        `json:"fleetIds,omitempty"`
+	EndpointIDs       []string                        `json:"endpointIds,omitempty"`
+	Environment       string                          `json:"environment,omitempty"`
+	ApprovalPolicyID  string                          `json:"approvalPolicyId,omitempty"`
+	OverridesByPack   map[string]apiextensionsv1.JSON `json:"overridesByPack,omitempty"`
+	MismatchBoost     *float64                        `json:"mismatchBoost,omitempty"`
+	DelegationBoost   *float64                        `json:"delegationBoost,omitempty"`
+	TrustFloor        *float64                        `json:"trustFloor,omitempty"`
+	CriticalThreshold *float64                        `json:"criticalThreshold,omitempty"`
 }
 
 type GovernanceEvidenceBackfillSpec struct {
@@ -55,27 +88,63 @@ type GovernanceDecisionFieldBackfillSpec struct {
 	DryRun               bool  `json:"dryRun,omitempty"`
 }
 
+type DecisionMetadataExportSpec struct {
+	Enabled            bool                `json:"enabled,omitempty"`
+	DestinationURL     string              `json:"destinationUrl,omitempty"`
+	AuthTokenSecretRef *SecretKeyReference `json:"authTokenSecretRef,omitempty"`
+	IntervalMinutes    int32               `json:"intervalMinutes,omitempty"`
+	BatchLimit         int32               `json:"batchLimit,omitempty"`
+	LookbackHours      int32               `json:"lookbackHours,omitempty"`
+}
+
 type ThothTenantSpec struct {
 	TenantID                        string                               `json:"tenantId"`
 	ApexDomain                      string                               `json:"apexDomain,omitempty"`
 	APIBaseURL                      string                               `json:"apiBaseURL,omitempty"`
+	AuthMode                        string                               `json:"authMode,omitempty"`
 	AuthSecretRef                   SecretKeyReference                   `json:"authSecretRef"`
 	Settings                        map[string]apiextensionsv1.JSON      `json:"settings,omitempty"`
 	MDMProvider                     *MDMProviderSpec                     `json:"mdmProvider,omitempty"`
+	MDMSync                         *MDMSyncSpec                         `json:"mdmSync,omitempty"`
+	WebhookSettings                 *WebhookSettingsSpec                 `json:"webhookSettings,omitempty"`
 	PolicySync                      bool                                 `json:"policySync,omitempty"`
+	PolicyBundles                   []PolicyBundleSpec                   `json:"policyBundles,omitempty"`
 	PackAssignments                 []PackAssignmentSpec                 `json:"packAssignments,omitempty"`
 	GovernanceEvidenceBackfill      *GovernanceEvidenceBackfillSpec      `json:"governanceEvidenceBackfill,omitempty"`
 	GovernanceDecisionFieldBackfill *GovernanceDecisionFieldBackfillSpec `json:"governanceDecisionFieldBackfill,omitempty"`
+	DecisionMetadataExport          *DecisionMetadataExportSpec          `json:"decisionMetadataExport,omitempty"`
+}
+
+type AppliedPolicyBundleStatus struct {
+	Name            string      `json:"name,omitempty"`
+	BundleID        string      `json:"bundleId,omitempty"`
+	Framework       string      `json:"framework,omitempty"`
+	Version         int64       `json:"version,omitempty"`
+	PolicyHash      string      `json:"policyHash,omitempty"`
+	Status          string      `json:"status,omitempty"`
+	EnforcementMode string      `json:"enforcementMode,omitempty"`
+	AppliedAt       metav1.Time `json:"appliedAt,omitempty"`
 }
 
 type ThothTenantStatus struct {
-	Phase                                 string             `json:"phase,omitempty"`
-	ObservedGeneration                    int64              `json:"observedGeneration,omitempty"`
-	EndpointURL                           string             `json:"endpointUrl,omitempty"`
-	LastPolicySyncAt                      *metav1.Time       `json:"lastPolicySyncAt,omitempty"`
-	LastGovernanceEvidenceBackfillAt      *metav1.Time       `json:"lastGovernanceEvidenceBackfillAt,omitempty"`
-	LastGovernanceDecisionFieldBackfillAt *metav1.Time       `json:"lastGovernanceDecisionFieldBackfillAt,omitempty"`
-	Conditions                            []metav1.Condition `json:"conditions,omitempty"`
+	Phase                                 string                      `json:"phase,omitempty"`
+	ObservedGeneration                    int64                       `json:"observedGeneration,omitempty"`
+	EndpointURL                           string                      `json:"endpointUrl,omitempty"`
+	LastWebhookTestAt                     *metav1.Time                `json:"lastWebhookTestAt,omitempty"`
+	LastWebhookTestStatus                 string                      `json:"lastWebhookTestStatus,omitempty"`
+	LastMDMSyncAt                         *metav1.Time                `json:"lastMdmSyncAt,omitempty"`
+	LastMDMSyncJobID                      string                      `json:"lastMdmSyncJobId,omitempty"`
+	LastMDMSyncStatus                     string                      `json:"lastMdmSyncStatus,omitempty"`
+	LastPolicySyncAt                      *metav1.Time                `json:"lastPolicySyncAt,omitempty"`
+	LastPolicyBundleApplyAt               *metav1.Time                `json:"lastPolicyBundleApplyAt,omitempty"`
+	AppliedPolicyBundles                  []AppliedPolicyBundleStatus `json:"appliedPolicyBundles,omitempty"`
+	LastGovernanceEvidenceBackfillAt      *metav1.Time                `json:"lastGovernanceEvidenceBackfillAt,omitempty"`
+	LastGovernanceDecisionFieldBackfillAt *metav1.Time                `json:"lastGovernanceDecisionFieldBackfillAt,omitempty"`
+	LastDecisionMetadataExportAt          *metav1.Time                `json:"lastDecisionMetadataExportAt,omitempty"`
+	LastDecisionMetadataRecordCount       int64                       `json:"lastDecisionMetadataRecordCount,omitempty"`
+	LastDecisionMetadataApprovalCount     int64                       `json:"lastDecisionMetadataApprovalCount,omitempty"`
+	LastDecisionMetadataExportStatus      string                      `json:"lastDecisionMetadataExportStatus,omitempty"`
+	Conditions                            []metav1.Condition          `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true

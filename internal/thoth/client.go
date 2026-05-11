@@ -23,18 +23,28 @@ const (
 )
 
 type ClientOptions struct {
-	TenantID   string
-	ApexDomain string
-	APIBaseURL string
-	AuthToken  string
-	Timeout    time.Duration
+	TenantID           string
+	ApexDomain         string
+	APIBaseURL         string
+	AuthToken          string
+	AuthMode           string
+	UserAgent          string
+	ProvisionedVia     string
+	Provisioner        string
+	ProvisionerVersion string
+	Timeout            time.Duration
 }
 
 type Client struct {
-	baseURL    string
-	tenantID   string
-	authToken  string
-	httpClient *http.Client
+	baseURL        string
+	tenantID       string
+	authToken      string
+	authMode       string
+	userAgent      string
+	provisionedVia string
+	provisioner    string
+	provisionerVer string
+	httpClient     *http.Client
 }
 
 type APIError struct {
@@ -86,10 +96,15 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	}
 
 	return &Client{
-		baseURL:    baseURL,
-		tenantID:   tenantID,
-		authToken:  token,
-		httpClient: &http.Client{Timeout: timeout},
+		baseURL:        baseURL,
+		tenantID:       tenantID,
+		authToken:      token,
+		authMode:       canonicalAuthMode(opts.AuthMode, token),
+		userAgent:      strings.TrimSpace(opts.UserAgent),
+		provisionedVia: strings.TrimSpace(strings.ToLower(opts.ProvisionedVia)),
+		provisioner:    strings.TrimSpace(opts.Provisioner),
+		provisionerVer: strings.TrimSpace(opts.ProvisionerVersion),
+		httpClient:     &http.Client{Timeout: timeout},
 	}, nil
 }
 
@@ -98,38 +113,95 @@ func (c *Client) EndpointURL() string {
 }
 
 func (c *Client) UpdateTenantSettings(ctx context.Context, payload map[string]any) error {
-	_, err := c.doJSON(ctx, http.MethodPut, c.tenantPath("settings"), nil, payload, true)
+	_, err := c.doJSON(ctx, http.MethodPut, c.tenantPath("settings"), nil, payload, nil, true)
 	return err
 }
 
+func (c *Client) GetTenantSettings(ctx context.Context) (map[string]any, error) {
+	out := map[string]any{}
+	_, err := c.doJSON(ctx, http.MethodGet, c.tenantPath("settings"), nil, nil, &out, true)
+	return out, err
+}
+
+func (c *Client) TestWebhook(ctx context.Context) (map[string]any, error) {
+	out := map[string]any{}
+	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("settings/webhook/test"), nil, map[string]any{}, &out, false)
+	return out, err
+}
+
 func (c *Client) UpsertMDMProvider(ctx context.Context, payload map[string]any) error {
-	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("mdm/providers"), nil, payload, true)
+	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("mdm/providers"), nil, payload, nil, true)
 	return err
 }
 
 func (c *Client) TriggerPolicySync(ctx context.Context) error {
-	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("policies/sync"), map[string]any{}, nil, false)
+	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("policies/sync"), nil, map[string]any{}, nil, false)
 	return err
 }
 
 func (c *Client) ApplyPacksBulk(ctx context.Context, payload map[string]any) error {
-	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("packs/apply"), payload, nil, false)
+	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("packs/apply"), nil, payload, nil, false)
 	return err
 }
 
 func (c *Client) BackfillGovernanceEvidence(ctx context.Context, payload map[string]any) (map[string]any, error) {
-	resp, err := c.doJSON(ctx, http.MethodPost, c.governancePath("evidence/thoth/backfill"), payload, nil, false)
+	resp, err := c.doJSON(ctx, http.MethodPost, c.governancePath("evidence/thoth/backfill"), nil, payload, nil, false)
 	if err == nil {
 		return resp, nil
 	}
 	if !isEvidenceBackfillCompatibilityError(err) {
 		return nil, err
 	}
-	return c.doJSON(ctx, http.MethodPost, c.tenantPath("governance/evidence/thoth/backfill"), payload, nil, false)
+	return c.doJSON(ctx, http.MethodPost, c.tenantPath("governance/evidence/thoth/backfill"), nil, payload, nil, false)
 }
 
 func (c *Client) BackfillGovernanceDecisionFields(ctx context.Context, payload map[string]any) (map[string]any, error) {
-	return c.doJSON(ctx, http.MethodPost, c.tenantPath("governance/backfill-decision-fields"), payload, nil, false)
+	return c.doJSON(ctx, http.MethodPost, c.tenantPath("governance/backfill-decision-fields"), nil, payload, nil, false)
+}
+
+func (c *Client) StartMDMSync(ctx context.Context, provider string) (map[string]any, error) {
+	out := map[string]any{}
+	path := c.tenantPath(fmt.Sprintf("mdm/providers/%s/sync", strings.TrimSpace(provider)))
+	_, err := c.doJSON(ctx, http.MethodPost, path, nil, map[string]any{}, &out, false)
+	return out, err
+}
+
+func (c *Client) GetMDMSyncJob(ctx context.Context, jobID string) (map[string]any, error) {
+	out := map[string]any{}
+	path := c.tenantPath(fmt.Sprintf("mdm/sync-jobs/%s", strings.TrimSpace(jobID)))
+	_, err := c.doJSON(ctx, http.MethodGet, path, nil, nil, &out, true)
+	return out, err
+}
+
+func (c *Client) CreatePolicyBundle(ctx context.Context, payload map[string]any) (map[string]any, error) {
+	out := map[string]any{}
+	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("policy-bundles"), nil, payload, &out, false)
+	return out, err
+}
+
+func (c *Client) ExportDecisionMetadata(ctx context.Context, from time.Time, to time.Time, limit int) (map[string]any, error) {
+	out := map[string]any{}
+	query := map[string]string{
+		"from":  from.UTC().Format(time.RFC3339),
+		"to":    to.UTC().Format(time.RFC3339),
+		"limit": fmt.Sprintf("%d", limit),
+	}
+	_, err := c.doJSON(ctx, http.MethodGet, c.tenantPath("governance/decision-metadata/export"), query, nil, &out, true)
+	return out, err
+}
+
+func (c *Client) CollectDecisionMetadata(ctx context.Context, payload map[string]any) (map[string]any, error) {
+	out := map[string]any{}
+	_, err := c.doJSON(
+		ctx,
+		http.MethodPost,
+		c.tenantPath("governance/moses/training/decision-metadata/collect"),
+		nil,
+		payload,
+		&out,
+		false,
+	)
+	return out, err
 }
 
 func (c *Client) tenantPath(path string) string {
@@ -142,8 +214,15 @@ func (c *Client) governancePath(path string) string {
 	return fmt.Sprintf("/%s/governance/%s", c.tenantID, trimmed)
 }
 
-func (c *Client) doJSON(ctx context.Context, method, path string, payload map[string]any, out any, retryable bool) (map[string]any, error) {
-	fullURL, err := c.buildURL(path)
+func (c *Client) doJSON(
+	ctx context.Context,
+	method, path string,
+	query map[string]string,
+	payload map[string]any,
+	out any,
+	retryable bool,
+) (map[string]any, error) {
+	fullURL, err := c.buildURL(path, query)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +250,23 @@ func (c *Client) doJSON(ctx context.Context, method, path string, payload map[st
 			return nil, fmt.Errorf("build request: %w", err)
 		}
 		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
+		if c.authMode == "api_key" {
+			req.Header.Set("X-Api-Key", c.authToken)
+		} else {
+			req.Header.Set("Authorization", "Bearer "+c.authToken)
+		}
+		if c.userAgent != "" {
+			req.Header.Set("User-Agent", c.userAgent)
+		}
+		if c.provisionedVia != "" {
+			req.Header.Set("X-Aten-Provisioned-Via", c.provisionedVia)
+		}
+		if c.provisioner != "" {
+			req.Header.Set("X-Aten-Provisioner", c.provisioner)
+		}
+		if c.provisionerVer != "" {
+			req.Header.Set("X-Aten-Provisioner-Version", c.provisionerVer)
+		}
 		if bodyBytes != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
@@ -220,7 +315,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, payload map[st
 	return nil, errors.New("max retry attempts exceeded")
 }
 
-func (c *Client) buildURL(path string) (string, error) {
+func (c *Client) buildURL(path string, query map[string]string) (string, error) {
 	rel := strings.TrimSpace(path)
 	if rel == "" {
 		return "", errors.New("path cannot be empty")
@@ -232,7 +327,37 @@ func (c *Client) buildURL(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("build URL: %w", err)
 	}
+	if len(query) > 0 {
+		values := parsed.Query()
+		for k, v := range query {
+			if strings.TrimSpace(k) == "" || strings.TrimSpace(v) == "" {
+				continue
+			}
+			values.Set(k, v)
+		}
+		parsed.RawQuery = values.Encode()
+	}
 	return parsed.String(), nil
+}
+
+func canonicalAuthMode(mode string, token string) string {
+	normalized := strings.ToLower(strings.TrimSpace(mode))
+	switch normalized {
+	case "bearer":
+		return "bearer"
+	case "api_key":
+		return "api_key"
+	case "", "auto":
+		if strings.HasPrefix(strings.TrimSpace(token), "thoth_") {
+			return "api_key"
+		}
+		return "bearer"
+	default:
+		if strings.HasPrefix(strings.TrimSpace(token), "thoth_") {
+			return "api_key"
+		}
+		return "bearer"
+	}
 }
 
 func decodeAPIError(status int, body []byte) error {

@@ -44,6 +44,65 @@ func (in *MDMProviderSpec) DeepCopy() *MDMProviderSpec {
 	return out
 }
 
+func (in *MDMSyncSpec) DeepCopyInto(out *MDMSyncSpec) {
+	*out = *in
+	if in.WaitForCompletion != nil {
+		in, out := &in.WaitForCompletion, &out.WaitForCompletion
+		*out = new(bool)
+		**out = **in
+	}
+}
+
+func (in *MDMSyncSpec) DeepCopy() *MDMSyncSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(MDMSyncSpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
+func (in *WebhookSettingsSpec) DeepCopyInto(out *WebhookSettingsSpec) {
+	*out = *in
+	if in.Enabled != nil {
+		in, out := &in.Enabled, &out.Enabled
+		*out = new(bool)
+		**out = **in
+	}
+	if in.SecretRef != nil {
+		in, out := &in.SecretRef, &out.SecretRef
+		*out = new(SecretKeyReference)
+		(*in).DeepCopyInto(*out)
+	}
+}
+
+func (in *WebhookSettingsSpec) DeepCopy() *WebhookSettingsSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(WebhookSettingsSpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
+func (in *PolicyBundleSpec) DeepCopyInto(out *PolicyBundleSpec) {
+	*out = *in
+	if in.Assignments != nil {
+		in, out := &in.Assignments, &out.Assignments
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+}
+
+func (in *PolicyBundleSpec) DeepCopy() *PolicyBundleSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(PolicyBundleSpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
 func (in *PackAssignmentSpec) DeepCopyInto(out *PackAssignmentSpec) {
 	*out = *in
 	if in.PackIDs != nil {
@@ -72,6 +131,26 @@ func (in *PackAssignmentSpec) DeepCopyInto(out *PackAssignmentSpec) {
 		for key, val := range *in {
 			(*out)[key] = *val.DeepCopy()
 		}
+	}
+	if in.MismatchBoost != nil {
+		in, out := &in.MismatchBoost, &out.MismatchBoost
+		*out = new(float64)
+		**out = **in
+	}
+	if in.DelegationBoost != nil {
+		in, out := &in.DelegationBoost, &out.DelegationBoost
+		*out = new(float64)
+		**out = **in
+	}
+	if in.TrustFloor != nil {
+		in, out := &in.TrustFloor, &out.TrustFloor
+		*out = new(float64)
+		**out = **in
+	}
+	if in.CriticalThreshold != nil {
+		in, out := &in.CriticalThreshold, &out.CriticalThreshold
+		*out = new(float64)
+		**out = **in
 	}
 }
 
@@ -120,6 +199,38 @@ func (in *GovernanceDecisionFieldBackfillSpec) DeepCopy() *GovernanceDecisionFie
 	return out
 }
 
+func (in *DecisionMetadataExportSpec) DeepCopyInto(out *DecisionMetadataExportSpec) {
+	*out = *in
+	if in.AuthTokenSecretRef != nil {
+		in, out := &in.AuthTokenSecretRef, &out.AuthTokenSecretRef
+		*out = new(SecretKeyReference)
+		(*in).DeepCopyInto(*out)
+	}
+}
+
+func (in *DecisionMetadataExportSpec) DeepCopy() *DecisionMetadataExportSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(DecisionMetadataExportSpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
+func (in *AppliedPolicyBundleStatus) DeepCopyInto(out *AppliedPolicyBundleStatus) {
+	*out = *in
+	in.AppliedAt.DeepCopyInto(&out.AppliedAt)
+}
+
+func (in *AppliedPolicyBundleStatus) DeepCopy() *AppliedPolicyBundleStatus {
+	if in == nil {
+		return nil
+	}
+	out := new(AppliedPolicyBundleStatus)
+	in.DeepCopyInto(out)
+	return out
+}
+
 func (in *ThothTenantSpec) DeepCopyInto(out *ThothTenantSpec) {
 	*out = *in
 	in.AuthSecretRef.DeepCopyInto(&out.AuthSecretRef)
@@ -134,6 +245,23 @@ func (in *ThothTenantSpec) DeepCopyInto(out *ThothTenantSpec) {
 		in, out := &in.MDMProvider, &out.MDMProvider
 		*out = new(MDMProviderSpec)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.MDMSync != nil {
+		in, out := &in.MDMSync, &out.MDMSync
+		*out = new(MDMSyncSpec)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.WebhookSettings != nil {
+		in, out := &in.WebhookSettings, &out.WebhookSettings
+		*out = new(WebhookSettingsSpec)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.PolicyBundles != nil {
+		in, out := &in.PolicyBundles, &out.PolicyBundles
+		*out = make([]PolicyBundleSpec, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	if in.PackAssignments != nil {
 		in, out := &in.PackAssignments, &out.PackAssignments
@@ -152,6 +280,11 @@ func (in *ThothTenantSpec) DeepCopyInto(out *ThothTenantSpec) {
 		*out = new(GovernanceDecisionFieldBackfillSpec)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.DecisionMetadataExport != nil {
+		in, out := &in.DecisionMetadataExport, &out.DecisionMetadataExport
+		*out = new(DecisionMetadataExportSpec)
+		(*in).DeepCopyInto(*out)
+	}
 }
 
 func (in *ThothTenantSpec) DeepCopy() *ThothTenantSpec {
@@ -165,9 +298,28 @@ func (in *ThothTenantSpec) DeepCopy() *ThothTenantSpec {
 
 func (in *ThothTenantStatus) DeepCopyInto(out *ThothTenantStatus) {
 	*out = *in
+	if in.LastWebhookTestAt != nil {
+		in, out := &in.LastWebhookTestAt, &out.LastWebhookTestAt
+		*out = (*in).DeepCopy()
+	}
+	if in.LastMDMSyncAt != nil {
+		in, out := &in.LastMDMSyncAt, &out.LastMDMSyncAt
+		*out = (*in).DeepCopy()
+	}
 	if in.LastPolicySyncAt != nil {
 		in, out := &in.LastPolicySyncAt, &out.LastPolicySyncAt
 		*out = (*in).DeepCopy()
+	}
+	if in.LastPolicyBundleApplyAt != nil {
+		in, out := &in.LastPolicyBundleApplyAt, &out.LastPolicyBundleApplyAt
+		*out = (*in).DeepCopy()
+	}
+	if in.AppliedPolicyBundles != nil {
+		in, out := &in.AppliedPolicyBundles, &out.AppliedPolicyBundles
+		*out = make([]AppliedPolicyBundleStatus, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	if in.LastGovernanceEvidenceBackfillAt != nil {
 		in, out := &in.LastGovernanceEvidenceBackfillAt, &out.LastGovernanceEvidenceBackfillAt
@@ -175,6 +327,10 @@ func (in *ThothTenantStatus) DeepCopyInto(out *ThothTenantStatus) {
 	}
 	if in.LastGovernanceDecisionFieldBackfillAt != nil {
 		in, out := &in.LastGovernanceDecisionFieldBackfillAt, &out.LastGovernanceDecisionFieldBackfillAt
+		*out = (*in).DeepCopy()
+	}
+	if in.LastDecisionMetadataExportAt != nil {
+		in, out := &in.LastDecisionMetadataExportAt, &out.LastDecisionMetadataExportAt
 		*out = (*in).DeepCopy()
 	}
 	if in.Conditions != nil {

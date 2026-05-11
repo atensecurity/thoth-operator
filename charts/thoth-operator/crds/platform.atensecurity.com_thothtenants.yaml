@@ -50,6 +50,8 @@ spec:
                 apiBaseURL:
                   type: string
                   format: uri
+                authMode:
+                  type: string
                 authSecretRef:
                   type: object
                   required:
@@ -86,6 +88,70 @@ spec:
                           type: string
                         key:
                           type: string
+                mdmSync:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    providerName:
+                      type: string
+                    waitForCompletion:
+                      type: boolean
+                    pollIntervalSeconds:
+                      type: integer
+                    timeoutSeconds:
+                      type: integer
+                webhookSettings:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    url:
+                      type: string
+                    secretRef:
+                      type: object
+                      required:
+                        - name
+                        - key
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                    testWebhookOnApply:
+                      type: boolean
+                policyBundles:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - framework
+                    properties:
+                      name:
+                        type: string
+                      description:
+                        type: string
+                      framework:
+                        type: string
+                      rawPolicy:
+                        type: string
+                      sourceUri:
+                        type: string
+                      s3Uri:
+                        type: string
+                      s3VersionId:
+                        type: string
+                      expectedHash:
+                        type: string
+                      assignments:
+                        type: array
+                        items:
+                          type: string
+                      status:
+                        type: string
+                      enforcementMode:
+                        type: string
                 packAssignments:
                   type: array
                   items:
@@ -120,6 +186,14 @@ spec:
                         type: object
                         additionalProperties:
                           x-kubernetes-preserve-unknown-fields: true
+                      mismatchBoost:
+                        type: number
+                      delegationBoost:
+                        type: number
+                      trustFloor:
+                        type: number
+                      criticalThreshold:
+                        type: number
                 governanceEvidenceBackfill:
                   type: object
                   properties:
@@ -152,6 +226,34 @@ spec:
                       type: boolean
                     dryRun:
                       type: boolean
+                decisionMetadataExport:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    destinationUrl:
+                      type: string
+                    authTokenSecretRef:
+                      type: object
+                      required:
+                        - name
+                        - key
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                    intervalMinutes:
+                      type: integer
+                      minimum: 1
+                    batchLimit:
+                      type: integer
+                      minimum: 1
+                      maximum: 5000
+                    lookbackHours:
+                      type: integer
+                      minimum: 1
+                      maximum: 336
                 policySync:
                   type: boolean
             status:
@@ -164,15 +266,64 @@ spec:
                   format: int64
                 endpointUrl:
                   type: string
+                lastWebhookTestAt:
+                  type: string
+                  format: date-time
+                lastWebhookTestStatus:
+                  type: string
+                lastMdmSyncAt:
+                  type: string
+                  format: date-time
+                lastMdmSyncJobId:
+                  type: string
+                lastMdmSyncStatus:
+                  type: string
                 lastPolicySyncAt:
                   type: string
                   format: date-time
+                lastPolicyBundleApplyAt:
+                  type: string
+                  format: date-time
+                appliedPolicyBundles:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      bundleId:
+                        type: string
+                      framework:
+                        type: string
+                      version:
+                        type: integer
+                        format: int64
+                      policyHash:
+                        type: string
+                      status:
+                        type: string
+                      enforcementMode:
+                        type: string
+                      appliedAt:
+                        type: string
+                        format: date-time
                 lastGovernanceEvidenceBackfillAt:
                   type: string
                   format: date-time
                 lastGovernanceDecisionFieldBackfillAt:
                   type: string
                   format: date-time
+                lastDecisionMetadataExportAt:
+                  type: string
+                  format: date-time
+                lastDecisionMetadataRecordCount:
+                  type: integer
+                  format: int64
+                lastDecisionMetadataApprovalCount:
+                  type: integer
+                  format: int64
+                lastDecisionMetadataExportStatus:
+                  type: string
                 conditions:
                   type: array
                   items:
