@@ -164,19 +164,30 @@ jobs:
           sed -i "s/^appVersion:.*/appVersion: \"${RELEASE_VERSION}\"/" "${ARTIFACT_DIR}/chart/Chart.yaml"
           sed -i "s/^  tag:.*/  tag: \"${RELEASE_VERSION}\"/" "${ARTIFACT_DIR}/chart/values.yaml"
 
+          CHART_NAME="$(awk -F': *' '$1=="name"{print $2; exit}' "${ARTIFACT_DIR}/chart/Chart.yaml" | tr -d '"')"
+          if [[ -z "${CHART_NAME}" ]]; then
+            echo "::error::Unable to determine chart name from Chart.yaml."
+            exit 1
+          fi
+
           helm package "${ARTIFACT_DIR}/chart" --destination "${ARTIFACT_DIR}"
-          CHART_ARCHIVE="${ARTIFACT_DIR}/thoth-operator-${RELEASE_VERSION}.tgz"
+          CHART_ARCHIVE="${ARTIFACT_DIR}/${CHART_NAME}-${RELEASE_VERSION}.tgz"
+          if [[ ! -f "${CHART_ARCHIVE}" ]]; then
+            echo "::error::Expected packaged chart archive not found: ${CHART_ARCHIVE}"
+            exit 1
+          fi
           helm push "${CHART_ARCHIVE}" "${CHART_OCI}"
 
           CHART_REF="${CHART_OCI#oci://}"
+          CHART_REF="${CHART_REF%/}/${CHART_NAME}"
           CHART_DIGEST="$(crane digest "${CHART_REF}:${RELEASE_VERSION}")"
-          sha256sum "${CHART_ARCHIVE}" > "${ARTIFACT_DIR}/thoth-operator-${RELEASE_VERSION}.sha256"
+          sha256sum "${CHART_ARCHIVE}" > "${ARTIFACT_DIR}/${CHART_NAME}-${RELEASE_VERSION}.sha256"
 
           echo "chart_oci=${CHART_OCI}" >> "$GITHUB_OUTPUT"
           echo "chart_ref=${CHART_REF}" >> "$GITHUB_OUTPUT"
           echo "chart_digest=${CHART_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "chart_archive=${CHART_ARCHIVE}" >> "$GITHUB_OUTPUT"
-          echo "chart_checksum=${ARTIFACT_DIR}/thoth-operator-${RELEASE_VERSION}.sha256" >> "$GITHUB_OUTPUT"
+          echo "chart_checksum=${ARTIFACT_DIR}/${CHART_NAME}-${RELEASE_VERSION}.sha256" >> "$GITHUB_OUTPUT"
           echo "artifact_dir=${ARTIFACT_DIR}" >> "$GITHUB_OUTPUT"
 
       - name: Sign and verify image + chart (shared key)
