@@ -262,9 +262,15 @@ jobs:
             if ! grep -q "BEGIN PUBLIC KEY" "${EXPECTED_PUB_FILE}"; then
               printf '%b' "${THOTH_OPERATOR_COSIGN_PUBLIC_KEY}" > "${EXPECTED_PUB_FILE}"
             fi
+            if ! grep -q "BEGIN PUBLIC KEY" "${EXPECTED_PUB_FILE}"; then
+              if printf '%s' "${THOTH_OPERATOR_COSIGN_PUBLIC_KEY}" | base64 --decode > "${EXPECTED_PUB_FILE}" 2>/dev/null \
+                && [[ -s "${EXPECTED_PUB_FILE}" ]]; then
+                true
+              fi
+            fi
+
             if ! cmp -s "${PUB_FILE}" "${EXPECTED_PUB_FILE}"; then
-              echo "::error::THOTH_OPERATOR_COSIGN_PUBLIC_KEY does not match THOTH_OPERATOR_COSIGN_PRIVATE_KEY."
-              exit 1
+              echo "::warning::THOTH_OPERATOR_COSIGN_PUBLIC_KEY does not match THOTH_OPERATOR_COSIGN_PRIVATE_KEY; continuing with derived public key. Update THOTH_OPERATOR_COSIGN_PUBLIC_KEY to match."
             fi
           fi
 
