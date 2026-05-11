@@ -176,11 +176,17 @@ jobs:
             echo "::error::Expected packaged chart archive not found: ${CHART_ARCHIVE}"
             exit 1
           fi
-          helm push "${CHART_ARCHIVE}" "${CHART_OCI}"
 
-          CHART_REF="${CHART_OCI#oci://}"
-          CHART_REF="${CHART_REF%/}/${CHART_NAME}"
-          CHART_DIGEST="$(crane digest "${CHART_REF}:${RELEASE_VERSION}")"
+          PUSH_OUTPUT="$(helm push "${CHART_ARCHIVE}" "${CHART_OCI}" 2>&1)"
+          echo "${PUSH_OUTPUT}"
+          PUSHED_REF="$(printf '%s\n' "${PUSH_OUTPUT}" | awk '/^Pushed: /{print $2}' | tail -n1)"
+          CHART_DIGEST="$(printf '%s\n' "${PUSH_OUTPUT}" | awk '/^Digest: /{print $2}' | tail -n1)"
+          if [[ -z "${PUSHED_REF}" || -z "${CHART_DIGEST}" ]]; then
+            echo "::error::Unable to parse chart reference or digest from helm push output."
+            exit 1
+          fi
+
+          CHART_REF="${PUSHED_REF%:*}"
           sha256sum "${CHART_ARCHIVE}" > "${ARTIFACT_DIR}/${CHART_NAME}-${RELEASE_VERSION}.sha256"
 
           echo "chart_oci=${CHART_OCI}" >> "$GITHUB_OUTPUT"
@@ -190,10 +196,13 @@ jobs:
           echo "chart_checksum=${ARTIFACT_DIR}/${CHART_NAME}-${RELEASE_VERSION}.sha256" >> "$GITHUB_OUTPUT"
           echo "artifact_dir=${ARTIFACT_DIR}" >> "$GITHUB_OUTPUT"
 
-      - name: Sign and verify image + chart (shared key)
+      - name: Sign and verify image + chart (cosign key-pair)
         id: sign
         shell: bash
         env:
+          THOTH_OPERATOR_COSIGN_PRIVATE_KEY: ${{ secrets.THOTH_OPERATOR_COSIGN_PRIVATE_KEY }}
+          THOTH_OPERATOR_COSIGN_PASSPHRASE: ${{ secrets.THOTH_OPERATOR_COSIGN_PASSPHRASE }}
+          THOTH_OPERATOR_COSIGN_PUBLIC_KEY: ${{ secrets.THOTH_OPERATOR_COSIGN_PUBLIC_KEY }}
           THOTH_TF_PROVIDER_GPG_PRIVATE_KEY: ${{ secrets.THOTH_TF_PROVIDER_GPG_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.THOTH_TF_PROVIDER_GPG_PASSPHRASE }}
           IMAGE_REPOSITORY: ${{ steps.image.outputs.image_repository }}
@@ -204,43 +213,60 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ -z "${THOTH_TF_PROVIDER_GPG_PRIVATE_KEY:-}" ]]; then
-            echo "::error::Missing THOTH_TF_PROVIDER_GPG_PRIVATE_KEY secret. This workflow expects the shared signing key."
-            exit 1
-          fi
-
           mkdir -p "${ARTIFACT_DIR}"
           KEY_FILE="${ARTIFACT_DIR}/cosign.key"
           PUB_FILE="${ARTIFACT_DIR}/cosign.pub"
           LOG_FILE="${ARTIFACT_DIR}/cosign.key.err"
           IMPORTED=0
+          PRIVATE_KEY_SECRET="${THOTH_OPERATOR_COSIGN_PRIVATE_KEY:-${THOTH_TF_PROVIDER_GPG_PRIVATE_KEY:-}}"
+          if [[ -n "${THOTH_OPERATOR_COSIGN_PASSPHRASE:-}" ]]; then
+            COSIGN_PASSWORD="${THOTH_OPERATOR_COSIGN_PASSPHRASE}"
+          fi
+          IMAGE_REF="${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"
+          CHART_REF_DIGEST="${CHART_REF}@${CHART_DIGEST}"
 
-          printf '%s' "${THOTH_TF_PROVIDER_GPG_PRIVATE_KEY}" > "${KEY_FILE}"
-          if cosign public-key --key "${KEY_FILE}" > "${PUB_FILE}" 2>"${LOG_FILE}"; then IMPORTED=1; fi
-
-          if [[ "${IMPORTED}" -eq 0 ]]; then
-            printf '%b' "${THOTH_TF_PROVIDER_GPG_PRIVATE_KEY}" > "${KEY_FILE}"
-            if cosign public-key --key "${KEY_FILE}" > "${PUB_FILE}" 2>"${LOG_FILE}"; then IMPORTED=1; fi
+          if [[ -z "${PRIVATE_KEY_SECRET}" ]]; then
+            echo "::error::Missing cosign private key secret. Set THOTH_OPERATOR_COSIGN_PRIVATE_KEY."
+            exit 1
           fi
 
-          if [[ "${IMPORTED}" -eq 0 ]]; then
-            if printf '%s' "${THOTH_TF_PROVIDER_GPG_PRIVATE_KEY}" | base64 --decode > "${KEY_FILE}" 2>/dev/null \
-              && [[ -s "${KEY_FILE}" ]] \
-              && cosign public-key --key "${KEY_FILE}" > "${PUB_FILE}" 2>"${LOG_FILE}"; then
-              IMPORTED=1
+          if [[ -n "${PRIVATE_KEY_SECRET}" ]]; then
+            printf '%s' "${PRIVATE_KEY_SECRET}" > "${KEY_FILE}"
+            if cosign public-key --key "${KEY_FILE}" > "${PUB_FILE}" 2>"${LOG_FILE}"; then IMPORTED=1; fi
+
+            if [[ "${IMPORTED}" -eq 0 ]]; then
+              printf '%b' "${PRIVATE_KEY_SECRET}" > "${KEY_FILE}"
+              if cosign public-key --key "${KEY_FILE}" > "${PUB_FILE}" 2>"${LOG_FILE}"; then IMPORTED=1; fi
+            fi
+
+            if [[ "${IMPORTED}" -eq 0 ]]; then
+              if printf '%s' "${PRIVATE_KEY_SECRET}" | base64 --decode > "${KEY_FILE}" 2>/dev/null \
+                && [[ -s "${KEY_FILE}" ]] \
+                && cosign public-key --key "${KEY_FILE}" > "${PUB_FILE}" 2>"${LOG_FILE}"; then
+                IMPORTED=1
+              fi
             fi
           fi
 
           if [[ "${IMPORTED}" -eq 0 ]]; then
-            echo "::error::THOTH_TF_PROVIDER_GPG_PRIVATE_KEY is not valid for cosign signing."
+            echo "::error::Configured cosign private key could not be parsed."
             if [[ -s "${LOG_FILE}" ]]; then
               echo "::error::cosign parse error: $(tail -n 1 "${LOG_FILE}")"
             fi
             exit 1
           fi
 
-          IMAGE_REF="${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"
-          CHART_REF_DIGEST="${CHART_REF}@${CHART_DIGEST}"
+          if [[ -n "${THOTH_OPERATOR_COSIGN_PUBLIC_KEY:-}" ]]; then
+            EXPECTED_PUB_FILE="${ARTIFACT_DIR}/expected-cosign.pub"
+            printf '%s' "${THOTH_OPERATOR_COSIGN_PUBLIC_KEY}" > "${EXPECTED_PUB_FILE}"
+            if ! grep -q "BEGIN PUBLIC KEY" "${EXPECTED_PUB_FILE}"; then
+              printf '%b' "${THOTH_OPERATOR_COSIGN_PUBLIC_KEY}" > "${EXPECTED_PUB_FILE}"
+            fi
+            if ! cmp -s "${PUB_FILE}" "${EXPECTED_PUB_FILE}"; then
+              echo "::error::THOTH_OPERATOR_COSIGN_PUBLIC_KEY does not match THOTH_OPERATOR_COSIGN_PRIVATE_KEY."
+              exit 1
+            fi
+          fi
 
           cosign sign --yes --key "${KEY_FILE}" "${IMAGE_REF}"
           cosign sign --yes --key "${KEY_FILE}" "${CHART_REF_DIGEST}"
@@ -249,6 +275,7 @@ jobs:
           cosign verify --key "${PUB_FILE}" "${CHART_REF_DIGEST}" >/dev/null
 
           echo "cosign_public_key=${PUB_FILE}" >> "$GITHUB_OUTPUT"
+          echo "signing_mode=key-pair" >> "$GITHUB_OUTPUT"
 
       - name: Build release notes from changelog
         id: notes
@@ -350,8 +377,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          RELEASE_FILES=("${CHART_ARCHIVE}" "${CHART_CHECKSUM}")
+          if [[ -n "${COSIGN_PUBLIC_KEY:-}" && -f "${COSIGN_PUBLIC_KEY}" ]]; then
+            RELEASE_FILES+=("${COSIGN_PUBLIC_KEY}")
+          fi
+
           if gh release view "${CURRENT_TAG}" >/dev/null 2>&1; then
-            gh release upload "${CURRENT_TAG}" "${CHART_ARCHIVE}" "${CHART_CHECKSUM}" "${COSIGN_PUBLIC_KEY}" --clobber
+            gh release upload "${CURRENT_TAG}" "${RELEASE_FILES[@]}" --clobber
             EDIT_ARGS=(
               "${CURRENT_TAG}"
               --title "thoth-operator ${CURRENT_TAG}"
@@ -364,9 +396,7 @@ jobs:
           else
             CREATE_ARGS=(
               "${CURRENT_TAG}"
-              "${CHART_ARCHIVE}"
-              "${CHART_CHECKSUM}"
-              "${COSIGN_PUBLIC_KEY}"
+              "${RELEASE_FILES[@]}"
               --title "thoth-operator ${CURRENT_TAG}"
               --notes-file "${NOTES_FILE}"
             )
