@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/atensecurity/thoth-operator
-  tag: "0.1.0@sha256:f618c06dd03349481a3c001b6c2b899980a0f1b7a622ae31c238ac2b07f9dc20"
+  tag: "0.1.0@sha256:0ae098b9eb77fd0a55a8876537850e18c1e0309eefd1f6a8cd531b2b99a9712e"
   pullPolicy: IfNotPresent
 
 nameOverride: ""
