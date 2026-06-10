@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -52,6 +53,15 @@ type APIError struct {
 	Code       string
 	Message    string
 	Body       string
+}
+
+// IsNotFound reports whether err is an API 404.
+func IsNotFound(err error) bool {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode == http.StatusNotFound
+	}
+	return false
 }
 
 func (e *APIError) Error() string {
@@ -132,6 +142,80 @@ func (c *Client) TestWebhook(ctx context.Context) (map[string]any, error) {
 func (c *Client) UpsertMDMProvider(ctx context.Context, payload map[string]any) error {
 	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("mdm/providers"), nil, payload, nil, true)
 	return err
+}
+
+func (c *Client) ListMCPVendors(ctx context.Context, approved *bool) ([]map[string]any, error) {
+	query := map[string]string{}
+	if approved != nil {
+		query["approved"] = fmt.Sprintf("%t", *approved)
+	}
+	out := map[string]any{}
+	_, err := c.doJSON(ctx, http.MethodGet, c.tenantPath("mcp/vendors"), query, nil, &out, true)
+	if err != nil {
+		return nil, err
+	}
+	return extractDataArray(out)
+}
+
+func (c *Client) GetMCPVendor(ctx context.Context, vendorID string) (map[string]any, error) {
+	normalized := strings.TrimSpace(vendorID)
+	if normalized == "" {
+		return nil, errors.New("vendor_id must be non-empty")
+	}
+	out := map[string]any{}
+	path := c.tenantPath(fmt.Sprintf("mcp/vendors/%s", url.PathEscape(normalized)))
+	_, err := c.doJSON(ctx, http.MethodGet, path, nil, nil, &out, true)
+	return out, err
+}
+
+func (c *Client) CreateMCPVendor(ctx context.Context, payload map[string]any) (map[string]any, error) {
+	out := map[string]any{}
+	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("mcp/vendors"), nil, payload, &out, false)
+	return out, err
+}
+
+func (c *Client) UpdateMCPVendor(ctx context.Context, vendorID string, payload map[string]any) (map[string]any, error) {
+	normalized := strings.TrimSpace(vendorID)
+	if normalized == "" {
+		return nil, errors.New("vendor_id must be non-empty")
+	}
+	out := map[string]any{}
+	path := c.tenantPath(fmt.Sprintf("mcp/vendors/%s", url.PathEscape(normalized)))
+	_, err := c.doJSON(ctx, http.MethodPut, path, nil, payload, &out, false)
+	return out, err
+}
+
+func (c *Client) DeleteMCPVendor(ctx context.Context, vendorID string) error {
+	normalized := strings.TrimSpace(vendorID)
+	if normalized == "" {
+		return errors.New("vendor_id must be non-empty")
+	}
+	path := c.tenantPath(fmt.Sprintf("mcp/vendors/%s", url.PathEscape(normalized)))
+	_, err := c.doJSON(ctx, http.MethodDelete, path, nil, nil, nil, false)
+	return err
+}
+
+func (c *Client) GetMCPInventoryReport(ctx context.Context, windowHours int64) (map[string]any, error) {
+	out := map[string]any{}
+	query := map[string]string{}
+	if windowHours > 0 {
+		query["window_hours"] = strconv.FormatInt(windowHours, 10)
+	}
+	_, err := c.doJSON(ctx, http.MethodGet, c.tenantPath("mcp/inventory/report"), query, nil, &out, true)
+	return out, err
+}
+
+func (c *Client) VerifyMCPCatalog(ctx context.Context, environment string, payload map[string]any) (map[string]any, error) {
+	out := map[string]any{}
+	query := map[string]string{}
+	if env := strings.TrimSpace(environment); env != "" {
+		query["env"] = env
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	_, err := c.doJSON(ctx, http.MethodPost, c.tenantPath("mcp/catalog/verify"), query, payload, &out, false)
+	return out, err
 }
 
 func (c *Client) TriggerPolicySync(ctx context.Context) error {
@@ -426,4 +510,24 @@ func waitBackoff(ctx context.Context, attempt int) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func extractDataArray(payload map[string]any) ([]map[string]any, error) {
+	items := make([]map[string]any, 0)
+	raw, ok := payload["data"]
+	if !ok {
+		return items, nil
+	}
+	rows, ok := raw.([]any)
+	if !ok {
+		return nil, errors.New("unexpected API response: data is not an array")
+	}
+	for _, row := range rows {
+		m, ok := row.(map[string]any)
+		if !ok {
+			continue
+		}
+		items = append(items, m)
+	}
+	return items, nil
 }

@@ -11,6 +11,8 @@ This operator reconciles a `ThothTenant` custom resource and applies desired sta
 
 - Tenant settings (`/{tenant}/thoth/settings`)
 - Optional webhook test (`/{tenant}/thoth/settings/webhook/test`)
+- Optional MCP inventory report snapshot (`/{tenant}/thoth/mcp/inventory/report`)
+- Optional MCP catalog verification check (`/{tenant}/thoth/mcp/catalog/verify`)
 - MDM provider upsert (`/{tenant}/thoth/mdm/providers`)
 - Optional MDM sync run + polling (`/{tenant}/thoth/mdm/providers/{provider}/sync`)
 - Policy bundle provisioning (`/{tenant}/thoth/policy-bundles`)
@@ -62,6 +64,8 @@ kubectl apply -f examples/thothtenant.yaml
 - `mdmProvider` (optional provider block)
 - `mdmSync` (optional one-shot sync on spec generation change)
 - `webhookSettings` (optional typed webhook config + webhook test on apply)
+- `mcpInventoryReport` (optional periodic MCP endpoint inventory summary snapshot)
+- `mcpCatalogVerify` (optional policy-derived MCP catalog verification check)
 - `policyBundles` (optional list of Cedar/OPA deterministic policies to create/update)
 - `packAssignments` (optional list of bulk pack apply operations)
 - `policySync` (optional bool to trigger policy sync on generation changes)

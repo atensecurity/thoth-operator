@@ -396,3 +396,205 @@ func TestCollectDecisionMetadataPostsMosesTrainingPath(t *testing.T) {
 		t.Fatalf("payload.tenant_id = %#v", gotPayload["tenant_id"])
 	}
 }
+
+func TestListMCPVendorsIncludesApprovedQueryWhenProvided(t *testing.T) {
+	t.Parallel()
+
+	var gotPath string
+	var gotApproved string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotApproved = r.URL.Query().Get("approved")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"vendor_id":"openai","display_name":"OpenAI"}]}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(ClientOptions{
+		TenantID:   "delta-arc",
+		APIBaseURL: srv.URL,
+		AuthToken:  "test-token",
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	approved := true
+	rows, err := client.ListMCPVendors(context.Background(), &approved)
+	if err != nil {
+		t.Fatalf("ListMCPVendors() error = %v", err)
+	}
+
+	if gotPath != "/delta-arc/thoth/mcp/vendors" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	if gotApproved != "true" {
+		t.Fatalf("approved query = %q", gotApproved)
+	}
+	if len(rows) != 1 || rows[0]["vendor_id"] != "openai" {
+		t.Fatalf("rows = %#v", rows)
+	}
+}
+
+func TestMCPVendorCRUDEndpoints(t *testing.T) {
+	t.Parallel()
+
+	vendorID := "vendor with spaces"
+	var calls []string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`{"vendor_id":"vendor with spaces","display_name":"Vendor"}`))
+		case http.MethodPost:
+			_, _ = w.Write([]byte(`{"vendor_id":"vendor with spaces","display_name":"Vendor"}`))
+		case http.MethodPut:
+			_, _ = w.Write([]byte(`{"vendor_id":"vendor with spaces","display_name":"Vendor Updated"}`))
+		case http.MethodDelete:
+			_, _ = w.Write([]byte(`{"deleted":true}`))
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(ClientOptions{
+		TenantID:   "delta-arc",
+		APIBaseURL: srv.URL,
+		AuthToken:  "test-token",
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	if _, err := client.CreateMCPVendor(context.Background(), map[string]any{"vendor_id": vendorID}); err != nil {
+		t.Fatalf("CreateMCPVendor() error = %v", err)
+	}
+	if _, err := client.GetMCPVendor(context.Background(), vendorID); err != nil {
+		t.Fatalf("GetMCPVendor() error = %v", err)
+	}
+	if _, err := client.UpdateMCPVendor(context.Background(), vendorID, map[string]any{"display_name": "Vendor Updated"}); err != nil {
+		t.Fatalf("UpdateMCPVendor() error = %v", err)
+	}
+	if err := client.DeleteMCPVendor(context.Background(), vendorID); err != nil {
+		t.Fatalf("DeleteMCPVendor() error = %v", err)
+	}
+
+	want := []string{
+		"POST /delta-arc/thoth/mcp/vendors",
+		"GET /delta-arc/thoth/mcp/vendors/" + vendorID,
+		"PUT /delta-arc/thoth/mcp/vendors/" + vendorID,
+		"DELETE /delta-arc/thoth/mcp/vendors/" + vendorID,
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+	for i := range want {
+		if calls[i] != want[i] {
+			t.Fatalf("calls[%d] = %q, want %q", i, calls[i], want[i])
+		}
+	}
+}
+
+func TestGetMCPInventoryReportUsesWindowHoursQuery(t *testing.T) {
+	t.Parallel()
+
+	var gotPath string
+	var gotWindow string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotWindow = r.URL.Query().Get("window_hours")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"endpoint_id":"ep-1","unapproved_calls":2}],"total":1,"window_hours":168}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(ClientOptions{
+		TenantID:   "delta-arc",
+		APIBaseURL: srv.URL,
+		AuthToken:  "test-token",
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	result, err := client.GetMCPInventoryReport(context.Background(), 168)
+	if err != nil {
+		t.Fatalf("GetMCPInventoryReport() error = %v", err)
+	}
+
+	if gotPath != "/delta-arc/thoth/mcp/inventory/report" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	if gotWindow != "168" {
+		t.Fatalf("window_hours query = %q", gotWindow)
+	}
+	if total := result["total"]; total != float64(1) {
+		t.Fatalf("result.total = %#v", total)
+	}
+}
+
+func TestVerifyMCPCatalogPostsPayloadAndEnv(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod string
+	var gotPath string
+	var gotEnv string
+	var gotPayload map[string]any
+	decodeErrCh := make(chan error, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotEnv = r.URL.Query().Get("env")
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&gotPayload); err != nil {
+			decodeErrCh <- err
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		decodeErrCh <- nil
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"policy_count":2,"allowed_tools":["a"],"blocked_tools":["b"]}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(ClientOptions{
+		TenantID:   "delta-arc",
+		APIBaseURL: srv.URL,
+		AuthToken:  "test-token",
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	result, err := client.VerifyMCPCatalog(context.Background(), "prod", map[string]any{
+		"principal": "agent:ops",
+	})
+	if err != nil {
+		t.Fatalf("VerifyMCPCatalog() error = %v", err)
+	}
+	if decodeErr := <-decodeErrCh; decodeErr != nil {
+		t.Fatalf("decode request body: %v", decodeErr)
+	}
+
+	if gotMethod != http.MethodPost {
+		t.Fatalf("method = %q", gotMethod)
+	}
+	if gotPath != "/delta-arc/thoth/mcp/catalog/verify" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	if gotEnv != "prod" {
+		t.Fatalf("env query = %q", gotEnv)
+	}
+	if gotPayload["principal"] != "agent:ops" {
+		t.Fatalf("payload.principal = %#v", gotPayload["principal"])
+	}
+	if policyCount := result["policy_count"]; policyCount != float64(2) {
+		t.Fatalf("result.policy_count = %#v", policyCount)
+	}
+}

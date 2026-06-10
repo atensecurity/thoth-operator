@@ -17,6 +17,26 @@ spec:
     enabled: true
     url: "https://hooks.example.com/thoth"
     testWebhookOnApply: true
+  mcpVendorRegistry:
+    enabled: true
+    observeOnly: false
+    passThroughApproved: true
+    vendors:
+      - vendorId: openai
+        displayName: OpenAI
+        approved: true
+        hostPatterns:
+          - api.openai.com
+          - "*.openai.com"
+        source: manual
+        notes: Approved by security engineering.
+      - vendorId: partner-api
+        displayName: Partner API
+        approved: true
+        hostPatterns:
+          - api.partner.example
+        source: discovered
+        notes: Vendor surfaced in endpoint telemetry.
   policyBundles:
     - name: trantor-mutual-global-dlp
       framework: OPA

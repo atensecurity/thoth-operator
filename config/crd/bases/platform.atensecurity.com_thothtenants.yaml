@@ -120,6 +120,69 @@ spec:
                           type: string
                     testWebhookOnApply:
                       type: boolean
+                mcpVendorRegistry:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    observeOnly:
+                      type: boolean
+                    passThroughApproved:
+                      type: boolean
+                    vendors:
+                      type: array
+                      items:
+                        type: object
+                        required:
+                          - vendorId
+                          - displayName
+                        properties:
+                          vendorId:
+                            type: string
+                          displayName:
+                            type: string
+                          approved:
+                            type: boolean
+                          hostPatterns:
+                            type: array
+                            items:
+                              type: string
+                          source:
+                            type: string
+                          notes:
+                            type: string
+                          lastSeenAt:
+                            type: string
+                mcpInventoryReport:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    windowHours:
+                      type: integer
+                      minimum: 1
+                      maximum: 4320
+                mcpCatalogVerify:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    environment:
+                      type: string
+                    principal:
+                      type: string
+                    humanRole:
+                      type: string
+                    humanPrincipal:
+                      type: string
+                    humanGroups:
+                      type: array
+                      items:
+                        type: string
+                    authContext:
+                      type: object
+                      additionalProperties:
+                        x-kubernetes-preserve-unknown-fields: true
                 policyBundles:
                   type: array
                   items:
@@ -307,6 +370,24 @@ spec:
                       appliedAt:
                         type: string
                         format: date-time
+                appliedMcpVendors:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      vendorId:
+                        type: string
+                      displayName:
+                        type: string
+                      approved:
+                        type: boolean
+                      hostPatterns:
+                        type: array
+                        items:
+                          type: string
+                      updatedAt:
+                        type: string
+                        format: date-time
                 lastGovernanceEvidenceBackfillAt:
                   type: string
                   format: date-time
@@ -324,6 +405,36 @@ spec:
                   format: int64
                 lastDecisionMetadataExportStatus:
                   type: string
+                lastMcpInventoryReportAt:
+                  type: string
+                  format: date-time
+                lastMcpInventoryReportStatus:
+                  type: string
+                lastMcpInventoryWindowHours:
+                  type: integer
+                lastMcpInventoryEndpointCount:
+                  type: integer
+                  format: int64
+                lastMcpInventoryUnapprovedEndpointCount:
+                  type: integer
+                  format: int64
+                lastMcpInventoryUnapprovedCallCount:
+                  type: integer
+                  format: int64
+                lastMcpCatalogVerifyAt:
+                  type: string
+                  format: date-time
+                lastMcpCatalogVerifyStatus:
+                  type: string
+                lastMcpCatalogVerifyPolicyCount:
+                  type: integer
+                  format: int64
+                lastMcpCatalogVerifyAllowedToolCount:
+                  type: integer
+                  format: int64
+                lastMcpCatalogVerifyBlockedToolCount:
+                  type: integer
+                  format: int64
                 conditions:
                   type: array
                   items:

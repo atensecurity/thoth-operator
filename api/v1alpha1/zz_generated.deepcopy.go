@@ -85,6 +85,44 @@ func (in *WebhookSettingsSpec) DeepCopy() *WebhookSettingsSpec {
 	return out
 }
 
+func (in *MCPInventoryReportSpec) DeepCopyInto(out *MCPInventoryReportSpec) {
+	*out = *in
+}
+
+func (in *MCPInventoryReportSpec) DeepCopy() *MCPInventoryReportSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(MCPInventoryReportSpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
+func (in *MCPCatalogVerifySpec) DeepCopyInto(out *MCPCatalogVerifySpec) {
+	*out = *in
+	if in.HumanGroups != nil {
+		in, out := &in.HumanGroups, &out.HumanGroups
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.AuthContext != nil {
+		in, out := &in.AuthContext, &out.AuthContext
+		*out = make(map[string]apiextensionsv1.JSON, len(*in))
+		for key, val := range *in {
+			(*out)[key] = *val.DeepCopy()
+		}
+	}
+}
+
+func (in *MCPCatalogVerifySpec) DeepCopy() *MCPCatalogVerifySpec {
+	if in == nil {
+		return nil
+	}
+	out := new(MCPCatalogVerifySpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
 func (in *PolicyBundleSpec) DeepCopyInto(out *PolicyBundleSpec) {
 	*out = *in
 	if in.Assignments != nil {
@@ -256,6 +294,16 @@ func (in *ThothTenantSpec) DeepCopyInto(out *ThothTenantSpec) {
 		*out = new(WebhookSettingsSpec)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.MCPInventoryReport != nil {
+		in, out := &in.MCPInventoryReport, &out.MCPInventoryReport
+		*out = new(MCPInventoryReportSpec)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.MCPCatalogVerify != nil {
+		in, out := &in.MCPCatalogVerify, &out.MCPCatalogVerify
+		*out = new(MCPCatalogVerifySpec)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.PolicyBundles != nil {
 		in, out := &in.PolicyBundles, &out.PolicyBundles
 		*out = make([]PolicyBundleSpec, len(*in))
@@ -331,6 +379,14 @@ func (in *ThothTenantStatus) DeepCopyInto(out *ThothTenantStatus) {
 	}
 	if in.LastDecisionMetadataExportAt != nil {
 		in, out := &in.LastDecisionMetadataExportAt, &out.LastDecisionMetadataExportAt
+		*out = (*in).DeepCopy()
+	}
+	if in.LastMCPInventoryReportAt != nil {
+		in, out := &in.LastMCPInventoryReportAt, &out.LastMCPInventoryReportAt
+		*out = (*in).DeepCopy()
+	}
+	if in.LastMCPCatalogVerifyAt != nil {
+		in, out := &in.LastMCPCatalogVerifyAt, &out.LastMCPCatalogVerifyAt
 		*out = (*in).DeepCopy()
 	}
 	if in.Conditions != nil {

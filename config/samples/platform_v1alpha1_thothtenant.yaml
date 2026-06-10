@@ -36,6 +36,31 @@ spec:
     enabled: true
     url: "https://hooks.example.com/thoth"
     testWebhookOnApply: true
+  mcpVendorRegistry:
+    enabled: true
+    observeOnly: false
+    passThroughApproved: true
+    vendors:
+      - vendorId: openai
+        displayName: OpenAI
+        approved: true
+        hostPatterns:
+          - api.openai.com
+          - "*.openai.com"
+        source: manual
+        notes: Managed by thoth-operator.
+  mcpInventoryReport:
+    enabled: true
+    windowHours: 168
+  mcpCatalogVerify:
+    enabled: true
+    environment: prod
+    principal: agent:security-analyst-agent
+    humanGroups:
+      - security-admins
+    authContext:
+      principal_type: "agent"
+      review_mode: "operator"
   governanceDecisionFieldBackfill:
     enabled: false
     limit: 500

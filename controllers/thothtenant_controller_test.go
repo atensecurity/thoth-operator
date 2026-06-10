@@ -303,3 +303,134 @@ func TestDecisionMetadataExportDue(t *testing.T) {
 		t.Fatalf("expected export to be due when interval elapsed")
 	}
 }
+
+func TestMCPVendorPayloadDefaultsApprovalToFalse(t *testing.T) {
+	vendorID, payload, err := mcpVendorPayload(platformv1alpha1.MCPVendorSpec{
+		VendorID:     "openai",
+		DisplayName:  "OpenAI",
+		HostPatterns: []string{"api.openai.com", "*.openai.com"},
+	})
+	if err != nil {
+		t.Fatalf("mcpVendorPayload() error = %v", err)
+	}
+	if vendorID != "openai" {
+		t.Fatalf("vendorID = %q, want openai", vendorID)
+	}
+	if payload["approved"] != false {
+		t.Fatalf("approved = %#v, want false", payload["approved"])
+	}
+}
+
+func TestMCPControlPayloadRequiresHostsWhenEnabledEnforceMode(t *testing.T) {
+	_, err := mcpControlPayload(platformv1alpha1.MCPVendorRegistrySpec{
+		Enabled:     true,
+		ObserveOnly: false,
+		Vendors:     nil,
+	})
+	if err == nil {
+		t.Fatalf("expected error when enabled=true observeOnly=false and no hosts are configured")
+	}
+}
+
+func TestMCPControlPayloadUsesApprovedHostsByDefault(t *testing.T) {
+	approved := true
+	mcpControl, err := mcpControlPayload(platformv1alpha1.MCPVendorRegistrySpec{
+		Enabled:     true,
+		ObserveOnly: false,
+		Vendors: []platformv1alpha1.MCPVendorSpec{
+			{
+				VendorID:     "openai",
+				DisplayName:  "OpenAI",
+				Approved:     &approved,
+				HostPatterns: []string{"api.openai.com"},
+			},
+			{
+				VendorID:     "other",
+				DisplayName:  "Other",
+				HostPatterns: []string{"api.other.com"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("mcpControlPayload() error = %v", err)
+	}
+
+	hosts, ok := mcpControl["approved_host_patterns"].([]string)
+	if !ok {
+		t.Fatalf("approved_host_patterns type = %T", mcpControl["approved_host_patterns"])
+	}
+	if len(hosts) != 1 || hosts[0] != "api.openai.com" {
+		t.Fatalf("approved_host_patterns = %#v", hosts)
+	}
+}
+
+func TestNormalizeMCPInventoryWindowHours(t *testing.T) {
+	if got := normalizeMCPInventoryWindowHours(0); got != 24*7 {
+		t.Fatalf("window(0) = %d, want 168", got)
+	}
+	if got := normalizeMCPInventoryWindowHours(24 * 365); got != 24*180 {
+		t.Fatalf("window(max) = %d, want 4320", got)
+	}
+	if got := normalizeMCPInventoryWindowHours(96); got != 96 {
+		t.Fatalf("window(96) = %d, want 96", got)
+	}
+}
+
+func TestSummarizeMCPInventoryReport(t *testing.T) {
+	report := map[string]any{
+		"data": []any{
+			map[string]any{"endpoint_id": "ep-1", "unapproved_calls": 3},
+			map[string]any{"endpoint_id": "ep-2", "unapproved_calls": 0},
+			map[string]any{"endpoint_id": "ep-3", "unapproved_calls": 1},
+		},
+	}
+	endpoints, unapprovedEndpoints, unapprovedCalls := summarizeMCPInventoryReport(report)
+	if endpoints != 3 {
+		t.Fatalf("endpoint count = %d, want 3", endpoints)
+	}
+	if unapprovedEndpoints != 2 {
+		t.Fatalf("unapproved endpoint count = %d, want 2", unapprovedEndpoints)
+	}
+	if unapprovedCalls != 4 {
+		t.Fatalf("unapproved call count = %d, want 4", unapprovedCalls)
+	}
+}
+
+func TestMCPCatalogVerifyPayloadRequiresPrincipalSignals(t *testing.T) {
+	_, _, err := mcpCatalogVerifyPayload(platformv1alpha1.MCPCatalogVerifySpec{Enabled: true})
+	if err == nil {
+		t.Fatalf("expected error when payload seeds are missing")
+	}
+}
+
+func TestMCPCatalogVerifyPayloadBuildsAuthContext(t *testing.T) {
+	environment, payload, err := mcpCatalogVerifyPayload(platformv1alpha1.MCPCatalogVerifySpec{
+		Enabled:     true,
+		Environment: "prod",
+		Principal:   "agent:ops",
+		HumanGroups: []string{"admins", "security"},
+		AuthContext: map[string]apiextensionsv1.JSON{
+			"principal_type": {Raw: []byte(`"human"`)},
+			"risk_score":     {Raw: []byte(`0.91`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("mcpCatalogVerifyPayload() error = %v", err)
+	}
+	if environment != "prod" {
+		t.Fatalf("environment = %q, want prod", environment)
+	}
+	if payload["principal"] != "agent:ops" {
+		t.Fatalf("payload.principal = %#v", payload["principal"])
+	}
+	authContext, ok := payload["auth_context"].(map[string]any)
+	if !ok {
+		t.Fatalf("auth_context type = %T", payload["auth_context"])
+	}
+	if authContext["principal_type"] != "human" {
+		t.Fatalf("auth_context.principal_type = %#v", authContext["principal_type"])
+	}
+	if authContext["risk_score"] != float64(0.91) {
+		t.Fatalf("auth_context.risk_score = %#v", authContext["risk_score"])
+	}
+}

@@ -37,6 +37,40 @@ type WebhookSettingsSpec struct {
 	TestWebhookOnApply bool                `json:"testWebhookOnApply,omitempty"`
 }
 
+type MCPVendorSpec struct {
+	VendorID     string   `json:"vendorId"`
+	DisplayName  string   `json:"displayName"`
+	Approved     *bool    `json:"approved,omitempty"`
+	HostPatterns []string `json:"hostPatterns,omitempty"`
+	Source       string   `json:"source,omitempty"`
+	Notes        string   `json:"notes,omitempty"`
+	LastSeenAt   string   `json:"lastSeenAt,omitempty"`
+}
+
+type MCPVendorRegistrySpec struct {
+	Enabled             bool            `json:"enabled,omitempty"`
+	ObserveOnly         bool            `json:"observeOnly,omitempty"`
+	PassThroughApproved *bool           `json:"passThroughApproved,omitempty"`
+	Vendors             []MCPVendorSpec `json:"vendors,omitempty"`
+}
+
+type MCPInventoryReportSpec struct {
+	Enabled bool `json:"enabled,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=4320
+	WindowHours int32 `json:"windowHours,omitempty"`
+}
+
+type MCPCatalogVerifySpec struct {
+	Enabled        bool                            `json:"enabled,omitempty"`
+	Environment    string                          `json:"environment,omitempty"`
+	Principal      string                          `json:"principal,omitempty"`
+	HumanRole      string                          `json:"humanRole,omitempty"`
+	HumanPrincipal string                          `json:"humanPrincipal,omitempty"`
+	HumanGroups    []string                        `json:"humanGroups,omitempty"`
+	AuthContext    map[string]apiextensionsv1.JSON `json:"authContext,omitempty"`
+}
+
 type PolicyBundleSpec struct {
 	Name            string   `json:"name"`
 	Description     string   `json:"description,omitempty"`
@@ -107,6 +141,9 @@ type ThothTenantSpec struct {
 	MDMProvider                     *MDMProviderSpec                     `json:"mdmProvider,omitempty"`
 	MDMSync                         *MDMSyncSpec                         `json:"mdmSync,omitempty"`
 	WebhookSettings                 *WebhookSettingsSpec                 `json:"webhookSettings,omitempty"`
+	MCPVendorRegistry               *MCPVendorRegistrySpec               `json:"mcpVendorRegistry,omitempty"`
+	MCPInventoryReport              *MCPInventoryReportSpec              `json:"mcpInventoryReport,omitempty"`
+	MCPCatalogVerify                *MCPCatalogVerifySpec                `json:"mcpCatalogVerify,omitempty"`
 	PolicySync                      bool                                 `json:"policySync,omitempty"`
 	PolicyBundles                   []PolicyBundleSpec                   `json:"policyBundles,omitempty"`
 	PackAssignments                 []PackAssignmentSpec                 `json:"packAssignments,omitempty"`
@@ -126,25 +163,45 @@ type AppliedPolicyBundleStatus struct {
 	AppliedAt       metav1.Time `json:"appliedAt,omitempty"`
 }
 
+type AppliedMCPVendorStatus struct {
+	VendorID     string      `json:"vendorId,omitempty"`
+	DisplayName  string      `json:"displayName,omitempty"`
+	Approved     bool        `json:"approved,omitempty"`
+	HostPatterns []string    `json:"hostPatterns,omitempty"`
+	UpdatedAt    metav1.Time `json:"updatedAt,omitempty"`
+}
+
 type ThothTenantStatus struct {
-	Phase                                 string                      `json:"phase,omitempty"`
-	ObservedGeneration                    int64                       `json:"observedGeneration,omitempty"`
-	EndpointURL                           string                      `json:"endpointUrl,omitempty"`
-	LastWebhookTestAt                     *metav1.Time                `json:"lastWebhookTestAt,omitempty"`
-	LastWebhookTestStatus                 string                      `json:"lastWebhookTestStatus,omitempty"`
-	LastMDMSyncAt                         *metav1.Time                `json:"lastMdmSyncAt,omitempty"`
-	LastMDMSyncJobID                      string                      `json:"lastMdmSyncJobId,omitempty"`
-	LastMDMSyncStatus                     string                      `json:"lastMdmSyncStatus,omitempty"`
-	LastPolicySyncAt                      *metav1.Time                `json:"lastPolicySyncAt,omitempty"`
-	LastPolicyBundleApplyAt               *metav1.Time                `json:"lastPolicyBundleApplyAt,omitempty"`
-	AppliedPolicyBundles                  []AppliedPolicyBundleStatus `json:"appliedPolicyBundles,omitempty"`
-	LastGovernanceEvidenceBackfillAt      *metav1.Time                `json:"lastGovernanceEvidenceBackfillAt,omitempty"`
-	LastGovernanceDecisionFieldBackfillAt *metav1.Time                `json:"lastGovernanceDecisionFieldBackfillAt,omitempty"`
-	LastDecisionMetadataExportAt          *metav1.Time                `json:"lastDecisionMetadataExportAt,omitempty"`
-	LastDecisionMetadataRecordCount       int64                       `json:"lastDecisionMetadataRecordCount,omitempty"`
-	LastDecisionMetadataApprovalCount     int64                       `json:"lastDecisionMetadataApprovalCount,omitempty"`
-	LastDecisionMetadataExportStatus      string                      `json:"lastDecisionMetadataExportStatus,omitempty"`
-	Conditions                            []metav1.Condition          `json:"conditions,omitempty"`
+	Phase                                   string                      `json:"phase,omitempty"`
+	ObservedGeneration                      int64                       `json:"observedGeneration,omitempty"`
+	EndpointURL                             string                      `json:"endpointUrl,omitempty"`
+	LastWebhookTestAt                       *metav1.Time                `json:"lastWebhookTestAt,omitempty"`
+	LastWebhookTestStatus                   string                      `json:"lastWebhookTestStatus,omitempty"`
+	LastMDMSyncAt                           *metav1.Time                `json:"lastMdmSyncAt,omitempty"`
+	LastMDMSyncJobID                        string                      `json:"lastMdmSyncJobId,omitempty"`
+	LastMDMSyncStatus                       string                      `json:"lastMdmSyncStatus,omitempty"`
+	LastPolicySyncAt                        *metav1.Time                `json:"lastPolicySyncAt,omitempty"`
+	LastPolicyBundleApplyAt                 *metav1.Time                `json:"lastPolicyBundleApplyAt,omitempty"`
+	AppliedPolicyBundles                    []AppliedPolicyBundleStatus `json:"appliedPolicyBundles,omitempty"`
+	AppliedMCPVendors                       []AppliedMCPVendorStatus    `json:"appliedMcpVendors,omitempty"`
+	LastGovernanceEvidenceBackfillAt        *metav1.Time                `json:"lastGovernanceEvidenceBackfillAt,omitempty"`
+	LastGovernanceDecisionFieldBackfillAt   *metav1.Time                `json:"lastGovernanceDecisionFieldBackfillAt,omitempty"`
+	LastDecisionMetadataExportAt            *metav1.Time                `json:"lastDecisionMetadataExportAt,omitempty"`
+	LastDecisionMetadataRecordCount         int64                       `json:"lastDecisionMetadataRecordCount,omitempty"`
+	LastDecisionMetadataApprovalCount       int64                       `json:"lastDecisionMetadataApprovalCount,omitempty"`
+	LastDecisionMetadataExportStatus        string                      `json:"lastDecisionMetadataExportStatus,omitempty"`
+	LastMCPInventoryReportAt                *metav1.Time                `json:"lastMcpInventoryReportAt,omitempty"`
+	LastMCPInventoryReportStatus            string                      `json:"lastMcpInventoryReportStatus,omitempty"`
+	LastMCPInventoryWindowHours             int32                       `json:"lastMcpInventoryWindowHours,omitempty"`
+	LastMCPInventoryEndpointCount           int64                       `json:"lastMcpInventoryEndpointCount,omitempty"`
+	LastMCPInventoryUnapprovedEndpointCount int64                       `json:"lastMcpInventoryUnapprovedEndpointCount,omitempty"`
+	LastMCPInventoryUnapprovedCallCount     int64                       `json:"lastMcpInventoryUnapprovedCallCount,omitempty"`
+	LastMCPCatalogVerifyAt                  *metav1.Time                `json:"lastMcpCatalogVerifyAt,omitempty"`
+	LastMCPCatalogVerifyStatus              string                      `json:"lastMcpCatalogVerifyStatus,omitempty"`
+	LastMCPCatalogVerifyPolicyCount         int64                       `json:"lastMcpCatalogVerifyPolicyCount,omitempty"`
+	LastMCPCatalogVerifyAllowedToolCount    int64                       `json:"lastMcpCatalogVerifyAllowedToolCount,omitempty"`
+	LastMCPCatalogVerifyBlockedToolCount    int64                       `json:"lastMcpCatalogVerifyBlockedToolCount,omitempty"`
+	Conditions                              []metav1.Condition          `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true

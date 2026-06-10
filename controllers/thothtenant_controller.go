@@ -98,6 +98,62 @@ func (r *ThothTenantReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{RequeueAfter: 45 * time.Second}, nil
 	}
 
+	if generationChanged {
+		if tenant.Spec.MCPVendorRegistry != nil {
+			appliedVendors, mcpErr := r.reconcileMCPVendorRegistry(ctx, &tenant, thothClient)
+			if mcpErr != nil {
+				r.setNotReadyStatus(ctx, &tenant, "MCPVendorRegistryError", mcpErr.Error())
+				return ctrl.Result{RequeueAfter: 45 * time.Second}, nil
+			}
+			tenant.Status.AppliedMCPVendors = appliedVendors
+		} else if len(tenant.Status.AppliedMCPVendors) > 0 {
+			if cleanupErr := r.deleteAppliedMCPVendors(ctx, thothClient, tenant.Status.AppliedMCPVendors); cleanupErr != nil {
+				r.setNotReadyStatus(ctx, &tenant, "MCPVendorRegistryCleanupError", cleanupErr.Error())
+				return ctrl.Result{RequeueAfter: 45 * time.Second}, nil
+			}
+			tenant.Status.AppliedMCPVendors = nil
+		}
+	}
+
+	if tenant.Spec.MCPInventoryReport != nil && tenant.Spec.MCPInventoryReport.Enabled {
+		windowHours := normalizeMCPInventoryWindowHours(tenant.Spec.MCPInventoryReport.WindowHours)
+		report, inventoryErr := thothClient.GetMCPInventoryReport(ctx, windowHours)
+		if inventoryErr != nil {
+			r.setNotReadyStatus(ctx, &tenant, "MCPInventoryReportError", inventoryErr.Error())
+			return ctrl.Result{RequeueAfter: 45 * time.Second}, nil
+		}
+
+		endpointCount, unapprovedEndpoints, unapprovedCalls := summarizeMCPInventoryReport(report)
+		now := metav1.Now()
+		tenant.Status.LastMCPInventoryReportAt = &now
+		tenant.Status.LastMCPInventoryWindowHours = int32(windowHours)
+		tenant.Status.LastMCPInventoryEndpointCount = endpointCount
+		tenant.Status.LastMCPInventoryUnapprovedEndpointCount = unapprovedEndpoints
+		tenant.Status.LastMCPInventoryUnapprovedCallCount = unapprovedCalls
+		tenant.Status.LastMCPInventoryReportStatus = "ok"
+	}
+
+	if tenant.Spec.MCPCatalogVerify != nil && tenant.Spec.MCPCatalogVerify.Enabled {
+		environment, payload, payloadErr := mcpCatalogVerifyPayload(*tenant.Spec.MCPCatalogVerify)
+		if payloadErr != nil {
+			r.setNotReadyStatus(ctx, &tenant, "MCPCatalogVerifyConfigError", payloadErr.Error())
+			return ctrl.Result{RequeueAfter: 45 * time.Second}, nil
+		}
+
+		result, verifyErr := thothClient.VerifyMCPCatalog(ctx, environment, payload)
+		if verifyErr != nil {
+			r.setNotReadyStatus(ctx, &tenant, "MCPCatalogVerifyError", verifyErr.Error())
+			return ctrl.Result{RequeueAfter: 45 * time.Second}, nil
+		}
+
+		now := metav1.Now()
+		tenant.Status.LastMCPCatalogVerifyAt = &now
+		tenant.Status.LastMCPCatalogVerifyPolicyCount = int64(floatFromAny(result["policy_count"]))
+		tenant.Status.LastMCPCatalogVerifyAllowedToolCount = int64(len(stringSliceFromAny(result["allowed_tools"])))
+		tenant.Status.LastMCPCatalogVerifyBlockedToolCount = int64(len(stringSliceFromAny(result["blocked_tools"])))
+		tenant.Status.LastMCPCatalogVerifyStatus = "ok"
+	}
+
 	if tenant.Spec.MDMProvider != nil {
 		payload, mdmErr := r.mdmPayload(ctx, &tenant)
 		if mdmErr != nil {
@@ -261,6 +317,14 @@ func (r *ThothTenantReconciler) reconcileTenantSettings(
 			webhook["secret"] = secret
 		}
 		payload["webhook"] = webhook
+	}
+
+	if tenant.Spec.MCPVendorRegistry != nil {
+		mcpControl, mcpErr := mcpControlPayload(*tenant.Spec.MCPVendorRegistry)
+		if mcpErr != nil {
+			return fmt.Errorf("mcpVendorRegistry: %w", mcpErr)
+		}
+		payload["mcp_control"] = mcpControl
 	}
 
 	if len(payload) > 0 {
@@ -551,6 +615,189 @@ func (r *ThothTenantReconciler) mdmPayload(ctx context.Context, tenant *platform
 	return payload, nil
 }
 
+func (r *ThothTenantReconciler) reconcileMCPVendorRegistry(
+	ctx context.Context,
+	tenant *platformv1alpha1.ThothTenant,
+	thothClient *thoth.Client,
+) ([]platformv1alpha1.AppliedMCPVendorStatus, error) {
+	spec := tenant.Spec.MCPVendorRegistry
+	if spec == nil {
+		return nil, nil
+	}
+
+	desiredIDs := make(map[string]struct{}, len(spec.Vendors))
+	applied := make([]platformv1alpha1.AppliedMCPVendorStatus, 0, len(spec.Vendors))
+	for i, vendor := range spec.Vendors {
+		vendorID, payload, err := mcpVendorPayload(vendor)
+		if err != nil {
+			return nil, fmt.Errorf("vendors[%d]: %w", i, err)
+		}
+		if _, exists := desiredIDs[vendorID]; exists {
+			return nil, fmt.Errorf("vendors[%d]: duplicate vendorId %q", i, vendorID)
+		}
+		desiredIDs[vendorID] = struct{}{}
+
+		row, getErr := thothClient.GetMCPVendor(ctx, vendorID)
+		if getErr != nil && !thoth.IsNotFound(getErr) {
+			return nil, fmt.Errorf("get vendor %q: %w", vendorID, getErr)
+		}
+
+		if thoth.IsNotFound(getErr) || len(row) == 0 {
+			payload["vendor_id"] = vendorID
+			row, err = thothClient.CreateMCPVendor(ctx, payload)
+			if err != nil {
+				return nil, fmt.Errorf("create vendor %q: %w", vendorID, err)
+			}
+		} else {
+			row, err = thothClient.UpdateMCPVendor(ctx, vendorID, payload)
+			if err != nil {
+				return nil, fmt.Errorf("update vendor %q: %w", vendorID, err)
+			}
+		}
+
+		applied = append(applied, flattenAppliedMCPVendorStatus(vendorID, row, payload))
+	}
+
+	for _, existing := range tenant.Status.AppliedMCPVendors {
+		vendorID := strings.TrimSpace(existing.VendorID)
+		if vendorID == "" {
+			continue
+		}
+		if _, keep := desiredIDs[vendorID]; keep {
+			continue
+		}
+		if err := thothClient.DeleteMCPVendor(ctx, vendorID); err != nil && !thoth.IsNotFound(err) {
+			return nil, fmt.Errorf("delete stale vendor %q: %w", vendorID, err)
+		}
+	}
+
+	return applied, nil
+}
+
+func (r *ThothTenantReconciler) deleteAppliedMCPVendors(
+	ctx context.Context,
+	thothClient *thoth.Client,
+	applied []platformv1alpha1.AppliedMCPVendorStatus,
+) error {
+	for _, vendor := range applied {
+		vendorID := strings.TrimSpace(vendor.VendorID)
+		if vendorID == "" {
+			continue
+		}
+		if err := thothClient.DeleteMCPVendor(ctx, vendorID); err != nil && !thoth.IsNotFound(err) {
+			return fmt.Errorf("delete vendor %q: %w", vendorID, err)
+		}
+	}
+	return nil
+}
+
+func mcpVendorPayload(spec platformv1alpha1.MCPVendorSpec) (string, map[string]any, error) {
+	vendorID := strings.TrimSpace(spec.VendorID)
+	if vendorID == "" {
+		return "", nil, fmt.Errorf("vendorId is required")
+	}
+	displayName := strings.TrimSpace(spec.DisplayName)
+	if displayName == "" {
+		return "", nil, fmt.Errorf("displayName is required")
+	}
+
+	hostPatterns := uniqueNonEmptyStrings(spec.HostPatterns)
+	if len(hostPatterns) == 0 {
+		return "", nil, fmt.Errorf("hostPatterns must include at least one host pattern")
+	}
+
+	payload := map[string]any{
+		"display_name":  displayName,
+		"approved":      mcpVendorApproved(spec),
+		"host_patterns": hostPatterns,
+	}
+	if source := strings.TrimSpace(spec.Source); source != "" {
+		payload["source"] = source
+	}
+	if notes := strings.TrimSpace(spec.Notes); notes != "" {
+		payload["notes"] = notes
+	}
+	if lastSeenAt := strings.TrimSpace(spec.LastSeenAt); lastSeenAt != "" {
+		payload["last_seen_at"] = lastSeenAt
+	}
+	return vendorID, payload, nil
+}
+
+func mcpVendorApproved(spec platformv1alpha1.MCPVendorSpec) bool {
+	if spec.Approved != nil {
+		return *spec.Approved
+	}
+	return false
+}
+
+func mcpControlPayload(spec platformv1alpha1.MCPVendorRegistrySpec) (map[string]any, error) {
+	passThroughApproved := true
+	if spec.PassThroughApproved != nil {
+		passThroughApproved = *spec.PassThroughApproved
+	}
+
+	allHosts := collectMCPVendorHostPatterns(spec.Vendors, false)
+	approvedHosts := collectMCPVendorHostPatterns(spec.Vendors, true)
+	hosts := approvedHosts
+	if !passThroughApproved {
+		hosts = allHosts
+	}
+
+	if spec.Enabled && !spec.ObserveOnly && len(hosts) == 0 {
+		return nil, fmt.Errorf(
+			"enabled non-observe mode requires at least one host pattern via mcpVendorRegistry.vendors",
+		)
+	}
+
+	return map[string]any{
+		"enabled":                spec.Enabled,
+		"observe_only":           spec.ObserveOnly,
+		"pass_through_approved":  passThroughApproved,
+		"approved_host_patterns": hosts,
+	}, nil
+}
+
+func collectMCPVendorHostPatterns(vendors []platformv1alpha1.MCPVendorSpec, approvedOnly bool) []string {
+	hosts := make([]string, 0, len(vendors))
+	for _, vendor := range vendors {
+		if approvedOnly && !mcpVendorApproved(vendor) {
+			continue
+		}
+		hosts = append(hosts, uniqueNonEmptyStrings(vendor.HostPatterns)...)
+	}
+	return uniqueNonEmptyStrings(hosts)
+}
+
+func flattenAppliedMCPVendorStatus(
+	vendorID string,
+	row map[string]any,
+	payload map[string]any,
+) platformv1alpha1.AppliedMCPVendorStatus {
+	displayName := firstNonEmpty(stringFromAny(row["display_name"]), stringFromAny(payload["display_name"]))
+	approved := boolFromAny(row["approved"])
+	if _, ok := row["approved"]; !ok {
+		approved = boolFromAny(payload["approved"])
+	}
+
+	hostPatterns := uniqueNonEmptyStrings(stringSliceFromAny(row["host_patterns"]))
+	if len(hostPatterns) == 0 {
+		hostPatterns = uniqueNonEmptyStrings(stringSliceFromAny(payload["host_patterns"]))
+	}
+
+	updatedAt := metav1.Now()
+	if parsed, ok := parseRFC3339Timestamp(stringFromAny(row["updated_at"])); ok {
+		updatedAt = parsed
+	}
+
+	return platformv1alpha1.AppliedMCPVendorStatus{
+		VendorID:     strings.TrimSpace(vendorID),
+		DisplayName:  displayName,
+		Approved:     approved,
+		HostPatterns: hostPatterns,
+		UpdatedAt:    updatedAt,
+	}
+}
+
 func packAssignmentPayload(spec platformv1alpha1.PackAssignmentSpec) (map[string]any, error) {
 	packIDs := uniqueNonEmptyStrings(spec.PackIDs)
 	if len(packIDs) == 0 {
@@ -839,6 +1086,52 @@ func stringFromAny(v any) string {
 	}
 }
 
+func stringSliceFromAny(v any) []string {
+	switch typed := v.(type) {
+	case []string:
+		return uniqueNonEmptyStrings(typed)
+	case []any:
+		if len(typed) == 0 {
+			return nil
+		}
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if s := strings.TrimSpace(stringFromAny(item)); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func boolFromAny(v any) bool {
+	switch typed := v.(type) {
+	case bool:
+		return typed
+	case string:
+		return strings.EqualFold(strings.TrimSpace(typed), "true")
+	default:
+		return false
+	}
+}
+
+func parseRFC3339Timestamp(raw string) (metav1.Time, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return metav1.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339, trimmed)
+	if err != nil {
+		parsed, err = time.Parse(time.RFC3339Nano, trimmed)
+		if err != nil {
+			return metav1.Time{}, false
+		}
+	}
+	return metav1.NewTime(parsed.UTC()), true
+}
+
 func floatFromAny(v any) float64 {
 	switch typed := v.(type) {
 	case int:
@@ -854,6 +1147,96 @@ func floatFromAny(v any) float64 {
 	default:
 		return 0
 	}
+}
+
+func normalizeMCPInventoryWindowHours(raw int32) int64 {
+	if raw <= 0 {
+		return 24 * 7
+	}
+	if raw > 24*180 {
+		return 24 * 180
+	}
+	return int64(raw)
+}
+
+func summarizeMCPInventoryReport(report map[string]any) (int64, int64, int64) {
+	rows := stringMapSliceFromAny(report["data"])
+	if len(rows) == 0 {
+		return 0, 0, 0
+	}
+
+	var endpointCount int64
+	var unapprovedEndpointCount int64
+	var unapprovedCallCount int64
+	for _, row := range rows {
+		endpointCount++
+		unapprovedCalls := int64(floatFromAny(row["unapproved_calls"]))
+		if unapprovedCalls > 0 {
+			unapprovedEndpointCount++
+			unapprovedCallCount += unapprovedCalls
+		}
+	}
+	return endpointCount, unapprovedEndpointCount, unapprovedCallCount
+}
+
+func stringMapSliceFromAny(v any) []map[string]any {
+	switch typed := v.(type) {
+	case []map[string]any:
+		return typed
+	case []any:
+		if len(typed) == 0 {
+			return nil
+		}
+		out := make([]map[string]any, 0, len(typed))
+		for _, row := range typed {
+			if mapped, ok := row.(map[string]any); ok {
+				out = append(out, mapped)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func mcpCatalogVerifyPayload(spec platformv1alpha1.MCPCatalogVerifySpec) (string, map[string]any, error) {
+	payload := map[string]any{}
+	if principal := strings.TrimSpace(spec.Principal); principal != "" {
+		payload["principal"] = principal
+	}
+	if humanRole := strings.TrimSpace(spec.HumanRole); humanRole != "" {
+		payload["human_role"] = humanRole
+	}
+	if humanPrincipal := strings.TrimSpace(spec.HumanPrincipal); humanPrincipal != "" {
+		payload["human_principal"] = humanPrincipal
+	}
+	if groups := uniqueNonEmptyStrings(spec.HumanGroups); len(groups) > 0 {
+		payload["human_groups"] = groups
+	}
+	if len(spec.AuthContext) > 0 {
+		authContext := map[string]any{}
+		for key, raw := range spec.AuthContext {
+			trimmed := strings.TrimSpace(key)
+			if trimmed == "" {
+				continue
+			}
+			var value any
+			if err := json.Unmarshal(raw.Raw, &value); err != nil {
+				return "", nil, fmt.Errorf("authContext[%q]: %w", trimmed, err)
+			}
+			authContext[trimmed] = value
+		}
+		if len(authContext) > 0 {
+			payload["auth_context"] = authContext
+		}
+	}
+
+	if len(payload) == 0 {
+		return "", nil, fmt.Errorf(
+			"mcpCatalogVerify requires principal, humanRole, humanPrincipal, humanGroups, or authContext",
+		)
+	}
+	return strings.TrimSpace(spec.Environment), payload, nil
 }
 
 func firstNonEmpty(values ...string) string {
