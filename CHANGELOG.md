@@ -4,7 +4,9 @@ All notable changes to `thoth-operator` are documented in this file.
 
 ## Unreleased
 
-- No changes yet.
+- A trial or self-serve workspace (a 32-character workspace ID) now reaches
+  `https://api.atensecurity.com` when no API base URL is configured, instead of a
+  `grid.` host that exists only for dedicated tenants.
 
 ## 0.1.1 - 2026-05-11
 

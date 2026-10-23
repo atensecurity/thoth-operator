@@ -25,6 +25,16 @@ func TestNewClientDerivesAPIBaseURLFromTenantAndApex(t *testing.T) {
 	}
 }
 
+func TestNewClientUsesTheSharedRuntimeForAWorkspaceID(t *testing.T) {
+	client, err := NewClient(ClientOptions{TenantID: "5d3e1e69cdc14fb4911e4cf7d2cfde25", AuthToken: "token"})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	if got, want := client.EndpointURL(), "https://api.atensecurity.com"; got != want {
+		t.Fatalf("EndpointURL() = %q, want %q", got, want)
+	}
+}
+
 func TestNewClientUsesExplicitAPIBaseURL(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		TenantID:   "acme",

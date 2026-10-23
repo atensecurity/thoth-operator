@@ -77,6 +77,35 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("thoth API error (%d)", e.StatusCode)
 }
 
+// sharedAPIBaseURL serves trial and self-serve workspaces, which share one
+// runtime and are named by a 32-character workspace ID.
+const sharedAPIBaseURL = "https://api.atensecurity.com"
+
+// defaultAPIBaseURL is the GovAPI address when none is configured: the shared
+// runtime for a workspace ID, otherwise the tenant's dedicated grid host.
+func defaultAPIBaseURL(tenantID, apex string) string {
+	if isSharedWorkspaceID(tenantID) {
+		return sharedAPIBaseURL
+	}
+	if apex == "" {
+		apex = "atensecurity.com"
+	}
+	return fmt.Sprintf("https://grid.%s.%s", tenantID, apex)
+}
+
+// isSharedWorkspaceID reports a 32-character lowercase hex workspace ID.
+func isSharedWorkspaceID(tenantID string) bool {
+	if len(tenantID) != 32 {
+		return false
+	}
+	for _, c := range tenantID {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 func NewClient(opts ClientOptions) (*Client, error) {
 	tenantID := strings.TrimSpace(opts.TenantID)
 	if tenantID == "" {
@@ -89,11 +118,7 @@ func NewClient(opts ClientOptions) (*Client, error) {
 
 	baseURL := strings.TrimSpace(opts.APIBaseURL)
 	if baseURL == "" {
-		apex := strings.TrimSpace(opts.ApexDomain)
-		if apex == "" {
-			apex = "atensecurity.com"
-		}
-		baseURL = fmt.Sprintf("https://grid.%s.%s", tenantID, apex)
+		baseURL = defaultAPIBaseURL(tenantID, strings.TrimSpace(opts.ApexDomain))
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
 	if _, err := url.Parse(baseURL); err != nil {
